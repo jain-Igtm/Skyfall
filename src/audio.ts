@@ -6,6 +6,9 @@ export class StationAudio {
   private sirenGain: GainNode | null = null
   private sirenSource: AudioBufferSourceNode | null = null
   private ambienceGain: GainNode | null = null
+  private mineGain: GainNode | null = null
+  private mineActive = false
+  private weaponShotBuffer: AudioBuffer | null = null
   private voiceCallback: VoiceCallback
   private speechTimer = 0
   private muted = false
@@ -60,6 +63,59 @@ export class StationAudio {
     hum.start()
     humSecond.start()
 
+    const mineGain = context.createGain()
+    mineGain.gain.value = 0
+    mineGain.connect(compressor)
+    this.mineGain = mineGain
+
+    const pump = context.createOscillator()
+    pump.type = 'sawtooth'
+    pump.frequency.value = 31
+    const pumpUpper = context.createOscillator()
+    pumpUpper.type = 'triangle'
+    pumpUpper.frequency.value = 63
+    const pumpFilter = context.createBiquadFilter()
+    pumpFilter.type = 'lowpass'
+    pumpFilter.frequency.value = 155
+    pumpFilter.Q.value = 1.4
+    const pumpGain = context.createGain()
+    pumpGain.gain.value = 0.2
+    const pumpPulse = context.createOscillator()
+    pumpPulse.type = 'sine'
+    pumpPulse.frequency.value = 1.12
+    const pumpDepth = context.createGain()
+    pumpDepth.gain.value = 0.13
+    pump.connect(pumpFilter)
+    pumpUpper.connect(pumpFilter)
+    pumpFilter.connect(pumpGain)
+    pumpGain.connect(mineGain)
+    pumpPulse.connect(pumpDepth)
+    pumpDepth.connect(pumpGain.gain)
+    pump.start()
+    pumpUpper.start()
+    pumpPulse.start()
+
+    const grindBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate)
+    const grindData = grindBuffer.getChannelData(0)
+    let brown = 0
+    for (let index = 0; index < grindData.length; index += 1) {
+      brown = brown * 0.985 + (Math.random() * 2 - 1) * 0.055
+      grindData[index] = brown
+    }
+    const grind = context.createBufferSource()
+    grind.buffer = grindBuffer
+    grind.loop = true
+    const grindFilter = context.createBiquadFilter()
+    grindFilter.type = 'bandpass'
+    grindFilter.frequency.value = 310
+    grindFilter.Q.value = 0.65
+    const grindGain = context.createGain()
+    grindGain.gain.value = 0.16
+    grind.connect(grindFilter)
+    grindFilter.connect(grindGain)
+    grindGain.connect(mineGain)
+    grind.start()
+
     const sirenGain = context.createGain()
     sirenGain.gain.value = 0.24
     sirenGain.connect(compressor)
@@ -70,6 +126,7 @@ export class StationAudio {
     sirenFilter.Q.value = 0.42
     sirenFilter.connect(sirenGain)
     void this.startRecordedAlarm(context, sirenFilter)
+    void this.loadWeaponShot(context)
   }
 
   setMuted(muted: boolean): void {
@@ -82,7 +139,14 @@ export class StationAudio {
 
   lowerAlarm(lowered: boolean): void {
     if (!this.context || !this.sirenGain) return
-    this.sirenGain.gain.setTargetAtTime(lowered ? 0.055 : 0.24, this.context.currentTime, 0.5)
+    this.sirenGain.gain.setTargetAtTime(lowered ? 0 : 0.24, this.context.currentTime, 0.5)
+  }
+
+  setMineActive(active: boolean): void {
+    if (this.mineActive === active) return
+    this.mineActive = active
+    if (!this.context || !this.mineGain) return
+    this.mineGain.gain.setTargetAtTime(active ? 0.25 : 0, this.context.currentTime, active ? 0.65 : 0.9)
   }
 
   speak(text: string): void {
@@ -118,25 +182,46 @@ export class StationAudio {
     const master = this.master
     if (!context || !master || this.muted) return
     const now = context.currentTime
-    const length = scatter ? 0.19 : 0.11
-    const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * length), context.sampleRate)
-    const data = buffer.getChannelData(0)
-    for (let index = 0; index < data.length; index += 1) {
-      const decay = 1 - index / data.length
-      data[index] = (Math.random() * 2 - 1) * decay * decay
+    const length = scatter ? 0.64 : 0.26
+    if (this.weaponShotBuffer) {
+      const shot = context.createBufferSource()
+      shot.buffer = this.weaponShotBuffer
+      shot.playbackRate.value = scatter ? 0.88 : 1.22 + Math.random() * 0.035
+      const highpass = context.createBiquadFilter()
+      highpass.type = 'highpass'
+      highpass.frequency.value = scatter ? 55 : 92
+      const lowpass = context.createBiquadFilter()
+      lowpass.type = 'lowpass'
+      lowpass.frequency.value = scatter ? 5200 : 6500
+      const shotGain = context.createGain()
+      shotGain.gain.setValueAtTime(scatter ? 0.68 : 0.34, now)
+      shotGain.gain.exponentialRampToValueAtTime(0.001, now + length)
+      shot.connect(highpass)
+      highpass.connect(lowpass)
+      lowpass.connect(shotGain)
+      shotGain.connect(master)
+      shot.start(now)
+      shot.stop(now + length + 0.02)
+    } else {
+      const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * 0.13), context.sampleRate)
+      const data = buffer.getChannelData(0)
+      for (let index = 0; index < data.length; index += 1) {
+        const decay = 1 - index / data.length
+        data[index] = (Math.random() * 2 - 1) * decay * decay
+      }
+      const noise = context.createBufferSource()
+      noise.buffer = buffer
+      const filter = context.createBiquadFilter()
+      filter.type = 'lowpass'
+      filter.frequency.value = scatter ? 920 : 1550
+      const gain = context.createGain()
+      gain.gain.setValueAtTime(scatter ? 0.62 : 0.34, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13)
+      noise.connect(filter)
+      filter.connect(gain)
+      gain.connect(master)
+      noise.start(now)
     }
-    const noise = context.createBufferSource()
-    noise.buffer = buffer
-    const filter = context.createBiquadFilter()
-    filter.type = 'lowpass'
-    filter.frequency.value = scatter ? 920 : 1550
-    const gain = context.createGain()
-    gain.gain.setValueAtTime(scatter ? 0.62 : 0.34, now)
-    gain.gain.exponentialRampToValueAtTime(0.001, now + length)
-    noise.connect(filter)
-    filter.connect(gain)
-    gain.connect(master)
-    noise.start(now)
 
     const body = context.createOscillator()
     body.type = 'triangle'
@@ -149,6 +234,36 @@ export class StationAudio {
     bodyGain.connect(master)
     body.start(now)
     body.stop(now + 0.11)
+  }
+
+  lift(descending: boolean): void {
+    const context = this.context
+    const master = this.master
+    if (!context || !master || this.muted) return
+    const now = context.currentTime
+    this.metalClick(0.13, 440)
+    const motor = context.createOscillator()
+    motor.type = 'sawtooth'
+    motor.frequency.setValueAtTime(descending ? 58 : 43, now)
+    motor.frequency.linearRampToValueAtTime(descending ? 39 : 61, now + 4.45)
+    const filter = context.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = 180
+    const gain = context.createGain()
+    gain.gain.setValueAtTime(0.001, now)
+    gain.gain.linearRampToValueAtTime(0.095, now + 0.28)
+    gain.gain.setValueAtTime(0.095, now + 4.05)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 4.58)
+    motor.connect(filter)
+    filter.connect(gain)
+    gain.connect(master)
+    motor.start(now)
+    motor.stop(now + 4.62)
+  }
+
+  liftArrived(): void {
+    this.metalClick(0.18, 230)
+    window.setTimeout(() => this.metalClick(0.1, 620), 130)
   }
 
   reload(): void {
@@ -258,6 +373,17 @@ export class StationAudio {
     gain.connect(master)
     oscillator.start(now)
     oscillator.stop(now + 0.07)
+  }
+
+  private async loadWeaponShot(context: AudioContext): Promise<void> {
+    try {
+      const response = await fetch('./assets/audio/weapon-shot.ogg')
+      if (!response.ok) throw new Error(`Weapon sound download failed with ${response.status}`)
+      const buffer = await context.decodeAudioData(await response.arrayBuffer())
+      if (this.context === context) this.weaponShotBuffer = buffer
+    } catch (error) {
+      console.error('The bundled weapon recording could not be decoded.', error)
+    }
   }
 
   private async startRecordedAlarm(context: AudioContext, destination: AudioNode): Promise<void> {

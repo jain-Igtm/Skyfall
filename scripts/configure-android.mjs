@@ -80,8 +80,8 @@ background = background.replace(/#[0-9A-Fa-f]{6}/, '#05080D')
 writeFileSync(backgroundPath, background)
 
 let buildGradle = readFileSync(buildGradlePath, 'utf8')
-buildGradle = buildGradle.replace(/versionCode \d+/, 'versionCode 2')
-buildGradle = buildGradle.replace(/versionName "[^"]+"/, 'versionName "0.1.1"')
+buildGradle = buildGradle.replace(/versionCode \d+/, 'versionCode 3')
+buildGradle = buildGradle.replace(/versionName "[^"]+"/, 'versionName "0.2.0"')
 writeFileSync(buildGradlePath, buildGradle)
 
-console.log('Configured landscape, fullscreen Skyfall Android 0.1.1 (2) project.')
+console.log('Configured landscape, fullscreen Skyfall Android 0.2.0 (3) project.')

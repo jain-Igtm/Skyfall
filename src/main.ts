@@ -12,7 +12,14 @@ import {
   repairProgress,
 } from './game-rules'
 import { createGhost, disposeGhost, updateGhostVisual, type Ghost } from './ghosts'
-import { buildStation, type StationInteraction } from './station'
+import {
+  buildStation,
+  liftX,
+  liftZ,
+  mineEyeY,
+  stationEyeY,
+  type StationInteraction,
+} from './station'
 import './styles.css'
 import './ashfall-expansion.css'
 import './ashfall-polish.css'
@@ -37,6 +44,14 @@ type WeaponDefinition = {
   scopeFov?: number
 }
 
+type LiftTransit = {
+  toMine: boolean
+  elapsed: number
+  duration: number
+  fromFloorY: number
+  toFloorY: number
+}
+
 const WEAPONS: Record<WeaponId, WeaponDefinition> = {
   carbine: {
     id: 'carbine',
@@ -50,7 +65,7 @@ const WEAPONS: Record<WeaponId, WeaponDefinition> = {
     pellets: 1,
     spread: 0.0032,
     automatic: true,
-    viewPosition: [0.34, -0.29, -0.61],
+    viewPosition: [0.4, -0.34, -1.08],
     scope: 'reflex',
     scopeFov: 52,
   },
@@ -66,7 +81,7 @@ const WEAPONS: Record<WeaponId, WeaponDefinition> = {
     pellets: 8,
     spread: 0.055,
     automatic: false,
-    viewPosition: [0.33, -0.31, -0.74],
+    viewPosition: [0.4, -0.36, -1.12],
   },
 }
 
@@ -179,16 +194,16 @@ const documentClose = requireElement<HTMLButtonElement>('document-close')
 
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x081116)
-scene.fog = new THREE.FogExp2(0x0c171d, 0.0042)
-scene.add(new THREE.AmbientLight(0xc3d3d8, 1.18))
-const coldFill = new THREE.HemisphereLight(0xd5edf1, 0x34434a, 1.42)
+scene.background = new THREE.Color(0x05080b)
+scene.fog = new THREE.FogExp2(0x080c0f, 0.0032)
+scene.add(new THREE.AmbientLight(0xa8b3b3, 1.2))
+const coldFill = new THREE.HemisphereLight(0xc8d8d8, 0x202627, 1.06)
 scene.add(coldFill)
 
 const camera = new THREE.PerspectiveCamera(69, innerWidth / innerHeight, 0.06, 500)
 camera.rotation.order = 'YXZ'
 scene.add(camera)
-const emergencyTorch = new THREE.SpotLight(0xe1f3f5, 58, 42, Math.PI * 0.23, 0.58, 1.25)
+const emergencyTorch = new THREE.SpotLight(0xd7e4e4, 48, 38, Math.PI * 0.23, 0.64, 1.35)
 emergencyTorch.position.set(0, 0.08, 0.05)
 emergencyTorch.target.position.set(0, -0.15, -4)
 camera.add(emergencyTorch, emergencyTorch.target)
@@ -203,7 +218,7 @@ renderer.setPixelRatio(renderPixelRatio)
 renderer.setSize(innerWidth, innerHeight)
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.toneMapping = THREE.ACESFilmicToneMapping
-renderer.toneMappingExposure = 2.4
+renderer.toneMappingExposure = 2
 
 const world = buildStation(scene)
 const clock = new THREE.Clock()
@@ -216,8 +231,8 @@ const ghosts: Ghost[] = []
 const ghostTargets: THREE.Mesh[] = []
 
 const player = {
-  position: new THREE.Vector3(-18, 1.72, 43),
-  yaw: -Math.PI / 2,
+  position: new THREE.Vector3(-18, stationEyeY, 50),
+  yaw: Math.PI,
   pitch: -0.03,
   radius: 0.48,
   walkSpeed: 7.45,
@@ -252,7 +267,7 @@ const state = {
   weaponIndex: 0,
   weaponAmmo: {} as Partial<Record<WeaponId, { ammo: number; reserve: number }>>,
   lookSensitivityIndex: 1,
-  brightnessIndex: 2,
+  brightnessIndex: 1,
   scoped: false,
   mask: false,
   suited: false,
@@ -267,6 +282,7 @@ const state = {
   secondsSinceDamage: 99,
   interactionCooldown: 0,
   whisperTimer: 3,
+  lift: null as LiftTransit | null,
 }
 
 const audio = new StationAudio((active, text) => {
@@ -276,9 +292,39 @@ const audio = new StationAudio((active, text) => {
 
 const gun = new THREE.Group()
 camera.add(gun)
-const gunDark = new THREE.MeshStandardMaterial({ color: 0x15191a, roughness: 0.5, metalness: 0.82 })
-const gunRust = new THREE.MeshStandardMaterial({ color: 0x693422, roughness: 0.64, metalness: 0.7 })
-const gunSteel = new THREE.MeshStandardMaterial({ color: 0x4b5354, roughness: 0.42, metalness: 0.88 })
+const gunTextureLoader = new THREE.TextureLoader()
+function loadGunTexture(path: string): THREE.Texture {
+  const texture = gunTextureLoader.load(path)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.anisotropy = 4
+  return texture
+}
+const gunDark = new THREE.MeshStandardMaterial({
+  map: loadGunTexture('./assets/textures/weapon-black.webp'),
+  color: 0x5f6463,
+  roughness: 0.62,
+  metalness: 0.75,
+})
+const gunRust = new THREE.MeshStandardMaterial({
+  map: loadGunTexture('./assets/textures/weapon-red.webp'),
+  color: 0x754942,
+  roughness: 0.72,
+  metalness: 0.64,
+})
+const gunSteel = new THREE.MeshStandardMaterial({
+  map: loadGunTexture('./assets/textures/weapon-steel.webp'),
+  color: 0x7c817f,
+  roughness: 0.5,
+  metalness: 0.84,
+})
+const gunBarrel = new THREE.MeshStandardMaterial({
+  map: loadGunTexture('./assets/textures/weapon-barrel.webp'),
+  color: 0x555653,
+  roughness: 0.5,
+  metalness: 0.87,
+})
 
 function gunBox(width: number, height: number, depth: number, x: number, y: number, z: number, material: THREE.Material): THREE.Mesh {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material)
@@ -287,22 +333,36 @@ function gunBox(width: number, height: number, depth: number, x: number, y: numb
   return mesh
 }
 
-gunBox(0.25, 0.22, 1.16, 0, 0, -0.3, gunDark)
-gunBox(0.42, 0.34, 0.6, 0, -0.02, 0.13, gunRust)
-gunBox(0.17, 0.56, 0.26, 0, -0.35, 0.17, gunDark).rotation.x = -0.13
-gunBox(0.11, 0.11, 0.96, 0, 0.03, -1.25, gunSteel)
-const sight = gunBox(0.23, 0.22, 0.3, 0, 0.27, -0.32, gunDark)
+function gunCylinder(radius: number, length: number, x: number, y: number, z: number, material: THREE.Material): THREE.Mesh {
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 12), material)
+  mesh.position.set(x, y, z)
+  mesh.rotation.x = Math.PI / 2
+  gun.add(mesh)
+  return mesh
+}
+
+gunBox(0.38, 0.27, 0.72, 0, 0, -0.16, gunRust)
+gunBox(0.27, 0.18, 0.84, 0, 0.08, -0.87, gunDark)
+gunBox(0.28, 0.22, 0.5, 0, 0, 0.48, gunDark)
+gunBox(0.33, 0.28, 0.1, 0, 0, 0.76, gunSteel)
+gunBox(0.14, 0.42, 0.2, 0.02, -0.29, 0.2, gunDark).rotation.x = -0.22
+gunBox(0.17, 0.36, 0.24, 0, -0.27, -0.14, gunSteel).rotation.x = 0.08
+gunBox(0.19, 0.045, 0.98, 0, 0.19, -0.4, gunSteel)
+gunCylinder(0.047, 0.9, 0, 0.04, -1.5, gunBarrel)
+const scatterBarrel = gunCylinder(0.043, 0.9, 0.095, 0.04, -1.5, gunBarrel)
+gunCylinder(0.068, 0.16, 0, 0.04, -2.03, gunSteel)
+const sight = gunBox(0.18, 0.17, 0.24, 0, 0.28, -0.34, gunDark)
 const sightGlass = new THREE.Mesh(
-  new THREE.PlaneGeometry(0.16, 0.12),
+  new THREE.PlaneGeometry(0.12, 0.085),
   new THREE.MeshBasicMaterial({ color: 0x77b7bd, transparent: true, opacity: 0.52, toneMapped: false }),
 )
-sightGlass.position.set(0, 0.1, -0.17)
+sightGlass.position.set(0, 0.075, -0.135)
 sight.add(sightGlass)
 const muzzle = new THREE.Mesh(
   new THREE.SphereGeometry(0.12, 7, 5),
   new THREE.MeshBasicMaterial({ color: 0xffb15d, transparent: true, opacity: 0.86, toneMapped: false }),
 )
-muzzle.position.set(0, 0.03, -1.78)
+muzzle.position.set(0, 0.03, -2.06)
 muzzle.visible = false
 gun.add(muzzle)
 const muzzleLight = new THREE.PointLight(0xff893d, 0, 6.5, 1.6)
@@ -346,9 +406,10 @@ function applyWeaponVisual(): void {
   gun.visible = Boolean(weapon)
   if (!weapon) return
   const scatter = weapon.id === 'scattergun'
-  gun.scale.set(scatter ? 1.06 : 1, scatter ? 0.96 : 1, scatter ? 1.2 : 1)
+  gun.scale.set(scatter ? 0.76 : 0.72, scatter ? 0.72 : 0.72, scatter ? 0.84 : 0.72)
   sight.visible = !scatter
-  gunRust.color.setHex(scatter ? 0x4b2a21 : 0x693422)
+  scatterBarrel.visible = scatter
+  gunRust.color.setHex(scatter ? 0x664b48 : 0x754942)
 }
 
 function setScoped(enabled: boolean): void {
@@ -416,26 +477,29 @@ function updateObjectiveStrip(): void {
   else if (!state.suited) objective = 'SUIT UP · EQUIPMENT BAY 03'
   else if (state.weaponSlots.length === 0) objective = 'ARM YOURSELF · SECURITY STORES'
   else if (!state.inventory.has('multi-tool')) objective = 'FIND THE IMPERIAL MULTI-TOOL · MACHINE SHOP'
-  else if (repaired < 3) objective = 'REPAIR LIFE SUPPORT · THERMAL EXCHANGE · CROWN RELAY'
+  else if (!state.repairedSystems.has('life-support')) objective = 'RESTORE LIFE SUPPORT · EAST MID-STATION'
+  else if (!state.repairedSystems.has('relay')) objective = 'REPAIR CROWN RELAY · WEST MID-STATION'
+  else if (!state.repairedSystems.has('coolant')) objective = 'DESCEND SERVICE LIFT · REPAIR SHAFT FOUR THERMAL EXCHANGE'
   else objective = 'HOLD ORISON-9 · RESCUE ESTIMATE UNAVAILABLE'
   const seal = state.mask ? '<b>SEAL ACTIVE</b>' : '<b>SEAL ABSENT</b>'
   objectiveStrip.innerHTML = `<strong>OBJECTIVE</strong><br>${objective}<br>${seal} · CRITICAL SYSTEMS ${repaired}/3`
 }
 
 function interactionAvailable(interaction: StationInteraction): boolean {
-  if (interaction.kind === 'lore') return true
+  if (interaction.kind === 'lore' || interaction.kind === 'elevator-down' || interaction.kind === 'elevator-up') return true
   return !interaction.used
 }
 
-function nearestInteraction(maxDistance = 2.75): StationInteraction | null {
+function nearestInteraction(maxDistance = 3): StationInteraction | null {
   let nearest: StationInteraction | null = null
   let nearestDistance = maxDistance * maxDistance
   camera.getWorldDirection(cameraDirection)
   for (const interaction of world.interactions) {
     if (!interactionAvailable(interaction)) continue
     const dx = interaction.position.x - player.position.x
+    const dy = interaction.position.y - player.position.y
     const dz = interaction.position.z - player.position.z
-    const distance = dx * dx + dz * dz
+    const distance = dx * dx + dy * dy + dz * dz
     if (distance > nearestDistance) continue
     const length = Math.max(0.001, Math.hypot(dx, dz))
     const facing = (dx / length) * cameraDirection.x + (dz / length) * cameraDirection.z
@@ -444,6 +508,30 @@ function nearestInteraction(maxDistance = 2.75): StationInteraction | null {
     nearest = interaction
   }
   return nearest
+}
+
+function beginLift(toMine: boolean): void {
+  if (state.lift || state.airborne) return
+  const below = player.position.y < -13
+  if (toMine === below) {
+    showToast(toMine ? 'LIFT ALREADY AT SHAFT FOUR' : 'LIFT ALREADY AT STATION LEVEL', 1.4)
+    return
+  }
+  const fromFloorY = below ? mineEyeY - 1.72 : stationEyeY - 1.72
+  const toFloorY = toMine ? mineEyeY - 1.72 : stationEyeY - 1.72
+  state.lift = { toMine, elapsed: 0, duration: 4.6, fromFloorY, toFloorY }
+  state.fireHeld = false
+  state.reloading = false
+  state.airborne = false
+  state.verticalVelocity = 0
+  setScoped(false)
+  const livingGhosts = ghosts.filter((ghost) => !ghost.dead).length
+  clearGhosts()
+  if (state.waveActive) state.pendingSpawns += livingGhosts
+  player.position.set(liftX, fromFloorY + 1.72, liftZ)
+  world.setLiftY(fromFloorY)
+  audio.lift(toMine)
+  showBanner(toMine ? 'SERVICE LIFT DESCENDING' : 'SERVICE LIFT ASCENDING', toMine ? 'SHAFT FOUR · 28 METRES' : 'ORISON-9 OPERATIONS', 4.5)
 }
 
 function updateInteractionPrompt(): void {
@@ -476,13 +564,17 @@ function closeDocument(): void {
 }
 
 function performInteraction(): void {
-  if (state.interactionCooldown > 0 || state.gameOver || state.documentOpen) return
+  if (state.interactionCooldown > 0 || state.gameOver || state.documentOpen || state.lift) return
   const interaction = nearestInteraction()
   if (!interaction) return
   state.interactionCooldown = 0.25
 
   if (interaction.kind === 'lore') {
     openDocument(interaction)
+    return
+  }
+  if (interaction.kind === 'elevator-down' || interaction.kind === 'elevator-up') {
+    beginLift(interaction.kind === 'elevator-down')
     return
   }
   if (interaction.kind === 'mask') {
@@ -530,8 +622,8 @@ function performInteraction(): void {
       audio.speak('Life support is answering. Atmosphere loss has slowed. Evacuation remains mandatory.')
       showBanner('LIFE SUPPORT RESTORED', 'PRESSURE LOSS SLOWING', 2.9)
     } else if (interaction.kind === 'coolant') {
-      audio.speak('Thermal exchange restored. Shaft Four remains beyond operating temperature. Do not approach the mine.')
-      showBanner('COOLANT LOOP RESTORED', 'SOMETHING MOVES BELOW SHAFT FOUR', 3.1)
+      audio.speak('Deep thermal exchange restored. Core pump temperature is falling. Shaft Four remains occupied by non-material motion.')
+      showBanner('DEEP COOLANT LOOP RESTORED', 'THE CORE PUMP IS STILL MOVING', 3.1)
     } else {
       audio.speak('Crown relay aligned. Imperial rescue estimate: unavailable. Principality receivers are not responding.')
       showBanner('CROWN RELAY RESTORED', 'NO AUTHORITY ANSWERS', 3.2)
@@ -548,7 +640,10 @@ function performInteraction(): void {
 }
 
 function circleHitsCollider(x: number, z: number, radius: number): boolean {
+  const playerBottom = player.position.y - 1.62
+  const playerTop = player.position.y + 0.12
   for (const collider of world.colliders) {
+    if (playerTop < collider.minY || playerBottom > collider.maxY) continue
     const nearestX = Math.max(collider.minX, Math.min(x, collider.maxX))
     const nearestZ = Math.max(collider.minZ, Math.min(z, collider.maxZ))
     const dx = x - nearestX
@@ -566,7 +661,7 @@ function movePlayer(dx: number, dz: number): void {
 }
 
 function jumpPlayer(): void {
-  if (!state.started || state.paused || state.documentOpen || state.gameOver || state.airborne) return
+  if (!state.started || state.paused || state.documentOpen || state.gameOver || state.airborne || state.lift) return
   state.verticalVelocity = 5.2
   state.airborne = true
 }
@@ -575,15 +670,36 @@ function updateVerticalMotion(dt: number): void {
   if (!state.airborne) return
   state.verticalVelocity -= 13.8 * dt
   player.position.y += state.verticalVelocity * dt
-  if (player.position.y > 1.72) return
-  player.position.y = 1.72
+  const groundY = player.position.y < -13 ? mineEyeY : stationEyeY
+  if (player.position.y > groundY) return
+  player.position.y = groundY
   state.airborne = false
   state.verticalVelocity = 0
 }
 
+function updateLift(dt: number): void {
+  const lift = state.lift
+  if (!lift) return
+  lift.elapsed = Math.min(lift.duration, lift.elapsed + dt)
+  const linear = lift.elapsed / lift.duration
+  const eased = linear * linear * (3 - 2 * linear)
+  const floorY = THREE.MathUtils.lerp(lift.fromFloorY, lift.toFloorY, eased)
+  world.setLiftY(floorY)
+  player.position.set(liftX, floorY + 1.72, liftZ)
+  audio.setMineActive(lift.toMine ? linear > 0.42 : linear < 0.58)
+  if (linear < 1) return
+  player.position.y = lift.toMine ? mineEyeY : stationEyeY
+  world.setLiftY(lift.toFloorY)
+  state.lift = null
+  state.interactionCooldown = 0.9
+  audio.setMineActive(lift.toMine)
+  audio.liftArrived()
+  showBanner(lift.toMine ? 'SHAFT FOUR' : 'ORISON-9 OPERATIONS', lift.toMine ? 'CORE PUMP ACCESS · HEAT WARNING' : 'STATION LEVEL · EVACUATION ACTIVE', 3.2)
+}
+
 function beginReload(): void {
   const weapon = currentWeapon()
-  if (!weapon || state.reloading || state.ammo >= weapon.magazineSize || state.reserve <= 0 || state.gameOver) return
+  if (!weapon || state.reloading || state.ammo >= weapon.magazineSize || state.reserve <= 0 || state.gameOver || state.lift) return
   state.reloading = true
   state.reloadTimer = weapon.reloadTime
   audio.reload()
@@ -604,7 +720,7 @@ function finishReload(): void {
 }
 
 function fireWeapon(): void {
-  if (!state.started || state.paused || state.documentOpen || state.gameOver || state.reloading || state.fireCooldown > 0) return
+  if (!state.started || state.paused || state.documentOpen || state.gameOver || state.reloading || state.fireCooldown > 0 || state.lift) return
   const weapon = currentWeapon()
   if (!weapon) {
     audio.empty()
@@ -670,8 +786,14 @@ function damagePlayer(rawAmount: number): void {
 }
 
 function spawnGhost(): void {
-  const distant = world.ghostSpawns.filter((point) => point.distanceToSquared(player.position) > 13 * 13)
-  const pool = distant.length > 0 ? distant : world.ghostSpawns
+  const sameLevel = world.ghostSpawns.filter((point) => Math.abs(point.y - player.position.y) < 6)
+  const distant = sameLevel.filter((point) => {
+    const dx = point.x - player.position.x
+    const dz = point.z - player.position.z
+    return dx * dx + dz * dz > 13 * 13
+  })
+  const pool = distant.length > 0 ? distant : sameLevel
+  if (pool.length === 0) return
   const base = pool[Math.floor(Math.random() * pool.length)]
   const position = base.clone()
   position.x += (Math.random() - 0.5) * 3.5
@@ -754,6 +876,10 @@ function updateGhosts(dt: number, elapsed: number): void {
     const dx = player.position.x - ghost.group.position.x
     const dz = player.position.z - ghost.group.position.z
     const distance = Math.max(0.001, Math.hypot(dx, dz))
+    if (Math.abs(player.position.y - ghost.baseY) > 7) {
+      updateGhostVisual(ghost, elapsed)
+      continue
+    }
     closest = Math.min(closest, distance)
     ghost.attackTimer -= dt
     const phaseStrength = 0.72 + Math.sin(elapsed * 2.1 + ghost.phase) * 0.22
@@ -761,7 +887,7 @@ function updateGhosts(dt: number, elapsed: number): void {
       ghost.group.position.x += (dx / distance) * ghost.speed * phaseStrength * dt
       ghost.group.position.z += (dz / distance) * ghost.speed * phaseStrength * dt
     }
-    ghost.group.position.y = 2.02 + Math.sin(elapsed * 2.45 + ghost.phase) * 0.24
+    ghost.group.position.y = ghost.baseY + 0.07 + Math.sin(elapsed * 2.45 + ghost.phase) * 0.24
     ghost.group.rotation.y = Math.atan2(dx, dz)
     if (distance < 1.55 && ghost.attackTimer <= 0) {
       ghost.attackTimer = 1.18 + Math.random() * 0.35
@@ -779,6 +905,15 @@ function updateGhosts(dt: number, elapsed: number): void {
 }
 
 function updatePlayer(dt: number): void {
+  if (state.lift) {
+    player.moving = false
+    camera.position.copy(player.position)
+    camera.rotation.set(player.pitch, player.yaw, 0)
+    ui.district.textContent = world.districtAt(player.position.x, player.position.y, player.position.z)
+    interactionPrompt.textContent = ''
+    interactionPrompt.classList.remove('visible')
+    return
+  }
   let forward = 0
   let strafe = 0
   if (keys.has('KeyW') || keys.has('ArrowUp')) forward += 1
@@ -823,10 +958,11 @@ function updatePlayer(dt: number): void {
       ironSights ? weapon.viewPosition[2] - 0.08 + state.recoil * 0.045 : weapon.viewPosition[2] + state.recoil * 0.08,
     )
     gun.rotation.x = -state.recoil * (ironSights ? 0.07 : 0.12)
-    gun.rotation.y = ironSights ? 0 : -0.035
+    gun.rotation.y = ironSights ? 0 : 0.12
     gun.visible = !hasScope
   }
-  ui.district.textContent = world.districtAt(player.position.x, player.position.z)
+  ui.district.textContent = world.districtAt(player.position.x, player.position.y, player.position.z)
+  audio.setMineActive(player.position.y < -13)
   updateInteractionPrompt()
 }
 
@@ -882,7 +1018,7 @@ function cycleSensitivity(): void {
 
 function cycleBrightness(): void {
   state.brightnessIndex = (state.brightnessIndex + 1) % 3
-  renderer.toneMappingExposure = [1.78, 2.08, 2.4][state.brightnessIndex]
+  renderer.toneMappingExposure = [1.65, 2, 2.3][state.brightnessIndex]
   refreshPauseSettings()
 }
 
@@ -909,8 +1045,8 @@ function endRun(): void {
 function resetRun(): void {
   clearGhosts()
   world.reset()
-  player.position.set(-18, 1.72, 43)
-  player.yaw = -Math.PI / 2
+  player.position.set(-18, stationEyeY, 50)
+  player.yaw = Math.PI
   player.pitch = -0.03
   player.bob = 0
   state.gameOver = false
@@ -944,6 +1080,7 @@ function resetRun(): void {
   state.repairedSystems.clear()
   state.interactionCooldown = 0
   state.whisperTimer = 3
+  state.lift = null
   visorOverlay.classList.remove('visible')
   closeDocument()
   setScoped(false)
@@ -951,6 +1088,7 @@ function resetRun(): void {
   ui.gameOverScreen.classList.remove('screen--visible')
   ui.gameOverScreen.setAttribute('aria-hidden', 'true')
   audio.lowerAlarm(false)
+  audio.setMineActive(false)
   updateObjectiveStrip()
   updateHud()
   showBanner('EVACUATION ORDER', 'PROCEED TO EQUIPMENT BAY 03', 4.5)
@@ -1206,15 +1344,18 @@ function animate(): void {
   if (state.started && !state.paused && !state.documentOpen && !state.gameOver) {
     state.fireCooldown = Math.max(0, state.fireCooldown - dt)
     state.interactionCooldown = Math.max(0, state.interactionCooldown - dt)
+    updateLift(dt)
     if (state.fireHeld) fireWeapon()
     if (state.reloading) {
       state.reloadTimer -= dt
       if (state.reloadTimer <= 0) finishReload()
     }
     updatePlayer(dt)
-    updateGhosts(dt, elapsed)
-    updateWave(dt)
-    updateHealthRecovery(dt)
+    if (!state.lift) {
+      updateGhosts(dt, elapsed)
+      updateWave(dt)
+      updateHealthRecovery(dt)
+    }
   }
   updateInterfaceTimers(dt)
   renderer.render(scene, camera)

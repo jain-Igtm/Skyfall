@@ -9,6 +9,7 @@ export type Ghost = {
   maxHealth: number
   speed: number
   damage: number
+  baseY: number
   attackTimer: number
   flashTimer: number
   phase: number
@@ -102,7 +103,6 @@ export function createGhost(
   const material = createGhostMaterial(phase)
   const group = new THREE.Group()
   group.position.copy(position)
-  group.position.y = 1.95
   group.scale.setScalar(0.92 + Math.random() * 0.2)
 
   const torsoGeometry = new THREE.CylinderGeometry(0.42, 0.83, 2.65, 11, 5, true)
@@ -187,6 +187,7 @@ export function createGhost(
     maxHealth: health,
     speed: 1.3 + Math.min(1.2, wave * 0.1) + Math.random() * 0.38,
     damage: 10 + Math.min(12, wave * 1.4),
+    baseY: position.y,
     attackTimer: 0.8 + Math.random(),
     flashTimer: 0,
     phase,

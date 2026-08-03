@@ -2,13 +2,16 @@
 
 Skyfall is a mobile-first first-person survival horror game set aboard Orison-9, an aging Imperial mining station on a moon orbiting a dead planet.
 
-The first playable build includes:
+The current playable build includes:
 
 - ASHFALL's primary mobile HUD and exact control layout/response
-- a medium-sized, explorable mining station with collision and multiple districts
-- emergency alarms and calm evacuation guidance
+- a dense, texture-driven station with dark gunmetal walls, working rooms, collision, and multiple districts
+- a real service-lift ride into Shaft Four: ring catwalks, a molten excavation pit, and a pumping core drill
+- a textured dead planet with a restrained atmospheric glow outside the observation glass
+- a project-supplied one-minute emergency alarm that loops until all critical repairs are complete
+- layered lift, machinery, grinding, and recorded weapon audio plus calm evacuation guidance
 - a lightweight suit and clear breathing shield to collect
-- weapon and tool pickups, three damaged critical systems, and repair objectives
+- textured weapon models and tool pickups, three damaged critical systems, and repair objectives spanning both levels
 - phasing space ghosts, escalating waves, combat, health, ammunition, and scoring
 - environmental evidence of the Empire's long administrative decline
 - a Capacitor Android target and GitHub Actions APK build
