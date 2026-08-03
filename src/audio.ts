@@ -4,6 +4,7 @@ export class StationAudio {
   private context: AudioContext | null = null
   private master: GainNode | null = null
   private sirenGain: GainNode | null = null
+  private sirenSource: AudioBufferSourceNode | null = null
   private ambienceGain: GainNode | null = null
   private voiceCallback: VoiceCallback
   private speechTimer = 0
@@ -60,43 +61,15 @@ export class StationAudio {
     humSecond.start()
 
     const sirenGain = context.createGain()
-    sirenGain.gain.value = 0.105
+    sirenGain.gain.value = 0.24
     sirenGain.connect(compressor)
     this.sirenGain = sirenGain
     const sirenFilter = context.createBiquadFilter()
-    sirenFilter.type = 'bandpass'
-    sirenFilter.frequency.value = 620
-    sirenFilter.Q.value = 1.9
+    sirenFilter.type = 'lowpass'
+    sirenFilter.frequency.value = 3600
+    sirenFilter.Q.value = 0.42
     sirenFilter.connect(sirenGain)
-    const siren = context.createOscillator()
-    siren.type = 'sawtooth'
-    siren.frequency.value = 420
-    const sirenSub = context.createOscillator()
-    sirenSub.type = 'square'
-    sirenSub.frequency.value = 210
-    const subGain = context.createGain()
-    subGain.gain.value = 0.16
-    siren.connect(sirenFilter)
-    sirenSub.connect(subGain)
-    subGain.connect(sirenFilter)
-    const sweep = context.createOscillator()
-    sweep.type = 'triangle'
-    sweep.frequency.value = 0.22
-    const sweepAmount = context.createGain()
-    sweepAmount.gain.value = 145
-    sweep.connect(sweepAmount)
-    sweepAmount.connect(siren.frequency)
-    const sirenPulse = context.createOscillator()
-    sirenPulse.type = 'sine'
-    sirenPulse.frequency.value = 0.44
-    const pulseAmount = context.createGain()
-    pulseAmount.gain.value = 0.048
-    sirenPulse.connect(pulseAmount)
-    pulseAmount.connect(sirenGain.gain)
-    siren.start()
-    sirenSub.start()
-    sweep.start()
-    sirenPulse.start()
+    void this.startRecordedAlarm(context, sirenFilter)
   }
 
   setMuted(muted: boolean): void {
@@ -109,7 +82,7 @@ export class StationAudio {
 
   lowerAlarm(lowered: boolean): void {
     if (!this.context || !this.sirenGain) return
-    this.sirenGain.gain.setTargetAtTime(lowered ? 0.035 : 0.105, this.context.currentTime, 0.5)
+    this.sirenGain.gain.setTargetAtTime(lowered ? 0.055 : 0.24, this.context.currentTime, 0.5)
   }
 
   speak(text: string): void {
@@ -285,5 +258,22 @@ export class StationAudio {
     gain.connect(master)
     oscillator.start(now)
     oscillator.stop(now + 0.07)
+  }
+
+  private async startRecordedAlarm(context: AudioContext, destination: AudioNode): Promise<void> {
+    try {
+      const response = await fetch('./assets/audio/station-alarm.ogg')
+      if (!response.ok) throw new Error(`Alarm download failed with ${response.status}`)
+      const buffer = await context.decodeAudioData(await response.arrayBuffer())
+      if (this.context !== context || this.sirenSource) return
+      const source = context.createBufferSource()
+      source.buffer = buffer
+      source.loop = true
+      source.connect(destination)
+      source.start()
+      this.sirenSource = source
+    } catch (error) {
+      console.error('The bundled station alarm could not be decoded.', error)
+    }
   }
 }

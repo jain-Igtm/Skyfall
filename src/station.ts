@@ -97,7 +97,7 @@ export function buildStation(scene: THREE.Scene): StationWorld {
   const interactions: StationInteraction[] = []
   const alarms: AlarmFixture[] = []
   const sparks: SparkEmitter[] = []
-  const flickerMaterials: THREE.MeshBasicMaterial[] = []
+  const flickerMaterials: Array<{ material: THREE.MeshBasicMaterial; baseColor: number }> = []
   const station = new THREE.Group()
   station.name = 'Orison-9 mining station'
   scene.add(station)
@@ -118,14 +118,14 @@ export function buildStation(scene: THREE.Scene): StationWorld {
   const ceilingTexture = loadSurfaceTexture('./assets/textures/station-ceiling.webp', 9, 15)
 
   const materials = {
-    floor: new THREE.MeshStandardMaterial({ map: floorTexture, color: 0x74787a, roughness: 0.91, metalness: 0.38 }),
-    floorInset: new THREE.MeshStandardMaterial({ map: floorTexture, color: 0x34383a, roughness: 0.88, metalness: 0.55 }),
-    wall: new THREE.MeshStandardMaterial({ map: wallTexture, color: 0x8a8f91, roughness: 0.79, metalness: 0.48 }),
-    wallDark: new THREE.MeshStandardMaterial({ map: wallTexture, color: 0x414648, roughness: 0.84, metalness: 0.62 }),
-    trim: new THREE.MeshStandardMaterial({ map: rustTexture, color: 0x8a5c47, roughness: 0.76, metalness: 0.65 }),
-    rust: new THREE.MeshStandardMaterial({ map: rustTexture, color: 0x6f4a3d, roughness: 0.92, metalness: 0.42 }),
-    pipe: new THREE.MeshStandardMaterial({ color: 0x4e5554, roughness: 0.53, metalness: 0.76 }),
-    black: new THREE.MeshStandardMaterial({ color: 0x080b0d, roughness: 0.72, metalness: 0.68 }),
+    floor: new THREE.MeshStandardMaterial({ map: floorTexture, color: 0xaeb5b7, roughness: 0.91, metalness: 0.38 }),
+    floorInset: new THREE.MeshStandardMaterial({ map: floorTexture, color: 0x6d7679, roughness: 0.88, metalness: 0.55 }),
+    wall: new THREE.MeshStandardMaterial({ map: wallTexture, color: 0xc2c7c8, roughness: 0.79, metalness: 0.48 }),
+    wallDark: new THREE.MeshStandardMaterial({ map: wallTexture, color: 0x747e81, roughness: 0.84, metalness: 0.62 }),
+    trim: new THREE.MeshStandardMaterial({ map: rustTexture, color: 0xb37f66, roughness: 0.76, metalness: 0.65 }),
+    rust: new THREE.MeshStandardMaterial({ map: rustTexture, color: 0x9b6954, roughness: 0.92, metalness: 0.42 }),
+    pipe: new THREE.MeshStandardMaterial({ color: 0x7b8687, roughness: 0.53, metalness: 0.76 }),
+    black: new THREE.MeshStandardMaterial({ color: 0x1d2528, roughness: 0.72, metalness: 0.68 }),
     glass: new THREE.MeshPhysicalMaterial({
       color: 0x6f929c,
       transparent: true,
@@ -135,8 +135,8 @@ export function buildStation(scene: THREE.Scene): StationWorld {
       transmission: 0.3,
       depthWrite: false,
     }),
-    emergency: new THREE.MeshBasicMaterial({ color: 0xbd291c, toneMapped: false }),
-    cold: new THREE.MeshBasicMaterial({ color: 0x93c4ca, toneMapped: false }),
+    emergency: new THREE.MeshBasicMaterial({ color: 0xf0442e, toneMapped: false }),
+    cold: new THREE.MeshBasicMaterial({ color: 0xc6eff4, toneMapped: false }),
   }
 
   function addBox(
@@ -200,7 +200,7 @@ export function buildStation(scene: THREE.Scene): StationWorld {
     0,
     5.26,
     2,
-    new THREE.MeshStandardMaterial({ map: ceilingTexture, color: 0x8b8d88, roughness: 0.96, metalness: 0.08 }),
+    new THREE.MeshStandardMaterial({ map: ceilingTexture, color: 0xb9bbb7, roughness: 0.96, metalness: 0.08 }),
   )
   for (let z = -48; z <= 52; z += 8) {
     addBox(9.5, 0.025, 0.06, 0, 0.025, z, materials.floorInset)
@@ -252,15 +252,23 @@ export function buildStation(scene: THREE.Scene): StationWorld {
   ] as const
   for (let index = 0; index < roomCenters.length; index += 1) {
     const [x, z] = roomCenters[index]
-    const cold = index === 8 || index === 3
-    const lightMaterial = (cold ? materials.cold : materials.emergency).clone()
-    flickerMaterials.push(lightMaterial)
+    const baseColor = 0xc6eff4
+    const lightMaterial = materials.cold.clone()
+    flickerMaterials.push({ material: lightMaterial, baseColor })
     addBox(index === 8 ? 8 : 6.5, 0.08, 0.28, x, 5.05, z, lightMaterial)
-    if (index % 2 === 0 || index === 3) {
-      const light = new THREE.PointLight(cold ? 0x8fcbd2 : 0xff3d25, cold ? 2.2 : 2.7, 19, 2)
-      light.position.set(x, 4.72, z)
-      station.add(light)
-    }
+    const light = new THREE.PointLight(0xc9edf1, 132, 31, 1.45)
+    light.position.set(x, 4.72, z)
+    station.add(light)
+  }
+
+  for (let z = -46; z <= 43; z += 11) {
+    const baseColor = 0xbde8ed
+    const lightMaterial = materials.cold.clone()
+    flickerMaterials.push({ material: lightMaterial, baseColor })
+    addBox(2.8, 0.08, 0.24, 0, 5.04, z, lightMaterial)
+    const light = new THREE.PointLight(0xc9edf1, 105, 24, 1.45)
+    light.position.set(0, 4.7, z)
+    station.add(light)
   }
 
   function addAlarm(x: number, z: number, phase: number): void {
@@ -283,7 +291,7 @@ export function buildStation(scene: THREE.Scene): StationWorld {
     beam.rotation.z = -Math.PI / 2
     beam.position.x = 3.7
     pivot.add(beam)
-    const lamp = new THREE.PointLight(0xff2e1e, 3.8, 14, 2)
+    const lamp = new THREE.PointLight(0xff2e1e, 70, 18, 1.6)
     lamp.position.x = 0.35
     pivot.add(lamp)
     station.add(pivot)
@@ -453,285 +461,4 @@ export function buildStation(scene: THREE.Scene): StationWorld {
     const interaction: StationInteraction = {
       id,
       kind,
-      label,
-      position: new THREE.Vector3(x, y, z),
-      group: visual,
-      used: false,
-    }
-    interactions.push(interaction)
-    return interaction
-  }
-
-  function pickupBase(accent = 0x79b5be): THREE.Group {
-    const group = new THREE.Group()
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(0.62, 0.035, 6, 24),
-      new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.72, toneMapped: false }),
-    )
-    ring.rotation.x = Math.PI / 2
-    group.add(ring)
-    const glow = new THREE.PointLight(accent, 1.1, 4, 2)
-    group.add(glow)
-    return group
-  }
-
-  const mask = pickupBase(0x9ed7df)
-  const shield = new THREE.Mesh(
-    new THREE.SphereGeometry(0.45, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.58),
-    new THREE.MeshPhysicalMaterial({
-      color: 0xb9e6eb,
-      transparent: true,
-      opacity: 0.2,
-      roughness: 0.08,
-      transmission: 0.72,
-      depthWrite: false,
-    }),
-  )
-  shield.rotation.x = -0.3
-  mask.add(shield)
-  const maskBand = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.045, 8, 22), materials.black)
-  maskBand.rotation.x = Math.PI / 2
-  mask.add(maskBand)
-  addPickup('mask', 'mask', 'TAKE CLEAR BREATHING SHIELD', -17, 1.2, 24, mask)
-
-  const suit = pickupBase(0xb57b59)
-  addBox(0.95, 1.6, 0.46, 0, 0, 0, materials.wallDark, false, suit)
-  addBox(1.35, 0.42, 0.48, 0, 0.42, 0, materials.rust, false, suit)
-  addCylinder(0.18, 1.25, -0.68, 0.2, 0, materials.wallDark, 0, suit)
-  addCylinder(0.18, 1.25, 0.68, 0.2, 0, materials.wallDark, 0, suit)
-  addPickup('suit', 'suit', 'SUIT UP · LIGHT MINING SHELL', -25, 1.35, 24, suit)
-
-  function weaponVisual(long = false): THREE.Group {
-    const group = pickupBase(long ? 0xbe8660 : 0xa7694d)
-    addBox(0.28, 0.28, long ? 2.7 : 2.1, 0, 0.15, 0, materials.black, false, group)
-    addBox(0.48, 0.52, 0.82, 0, 0.1, 0.22, materials.rust, false, group)
-    addBox(0.2, 0.7, 0.34, 0, -0.33, 0.3, materials.wallDark, false, group)
-    group.rotation.y = Math.PI / 2
-    return group
-  }
-  addPickup('carbine', 'carbine', 'TAKE RUSTLINE CARBINE', 19, 1.15, 23, weaponVisual())
-  addPickup('scattergun', 'scattergun', 'TAKE BREACH SCATTERGUN', -23, 1.15, -27, weaponVisual(true))
-
-  const tool = pickupBase(0xd8ab5f)
-  addBox(0.26, 0.28, 1.45, 0, 0.06, 0, materials.pipe, false, tool)
-  addBox(0.62, 0.18, 0.35, 0, 0.06, -0.62, materials.trim, false, tool)
-  addPickup('multi-tool', 'multi-tool', 'TAKE IMPERIAL MULTI-TOOL', -20, 1.05, -38, tool)
-
-  const fuse = pickupBase(0xc17d55)
-  addCylinder(0.22, 1.1, 0, 0, 0, materials.trim, Math.PI / 2, fuse)
-  addCylinder(0.29, 0.18, -0.52, 0, 0, materials.pipe, Math.PI / 2, fuse)
-  addCylinder(0.29, 0.18, 0.52, 0, 0, materials.pipe, Math.PI / 2, fuse)
-  addPickup('relay-fuse', 'relay-fuse', 'TAKE RELAY FUSE', 26, 1.05, 17, fuse)
-
-  const coupler = pickupBase(0x7ebfc7)
-  const couplerMesh = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.17, 8, 16), materials.pipe)
-  coupler.add(couplerMesh)
-  addPickup('coolant-coupler', 'coolant-coupler', 'TAKE COOLANT COUPLER', -27, 1.05, -20, coupler)
-
-  function addSystem(
-    id: string,
-    kind: InteractionKind,
-    label: string,
-    consoleData: ReturnType<typeof addConsole>,
-  ): void {
-    const interaction: StationInteraction = {
-      id,
-      kind,
-      label,
-      position: consoleData.group.position.clone().setY(1.2),
-      group: consoleData.group,
-      used: false,
-      screen: consoleData.screen,
-    }
-    interactions.push(interaction)
-  }
-  addSystem('relay', 'relay', 'REPAIR CROWN RELAY', relayConsole)
-  addSystem('life-support', 'life-support', 'RESTORE LIFE SUPPORT', lifeConsole)
-  addSystem('coolant', 'coolant', 'REPAIR THERMAL EXCHANGE', coolantConsole)
-
-  function addLore(
-    id: string,
-    x: number,
-    z: number,
-    title: string,
-    body: string,
-  ): void {
-    const group = new THREE.Group()
-    group.position.set(x, 1.3, z)
-    const casing = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.7, 0.18), materials.black)
-    group.add(casing)
-    const material = new THREE.MeshBasicMaterial({ color: 0x41656a, toneMapped: false })
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 1.3), material)
-    screen.position.z = 0.1
-    group.add(screen)
-    station.add(group)
-    interactions.push({
-      id,
-      kind: 'lore',
-      label: 'READ STATION NOTICE',
-      position: group.position.clone(),
-      group,
-      used: false,
-      title,
-      body,
-    })
-  }
-
-  addLore(
-    'charter',
-    -11,
-    51,
-    'CHARTER OF EXTRACTION · AMENDMENT 882',
-    'Orison-9 remains property of the Central Empire in perpetuity.\n\nLocal levy, safety and burial ordinances are administered by the Principality of Vesta until direct Imperial authority resumes.\n\nExpected resumption date: pending.',
-  )
-  addLore(
-    'payroll',
-    -28,
-    29,
-    'PAYROLL DENOMINATION NOTICE',
-    'Central crowns will no longer be accepted at station commissaries. Vesta scrip, Khepri freight notes and refinery ration chits remain valid.\n\nImperial payroll arrears now stand at eleven rotations.',
-  )
-  addLore(
-    'relay-notice',
-    -11,
-    -9,
-    'CROWN RELAY SERVICE BULLETIN',
-    'The Imperial relay acknowledges all lawful petitions in the order received. Current round-trip latency is forty-one standard days.\n\nDo not retransmit. Duplicate petitions incur a filing levy.',
-  )
-  addLore(
-    'memorial',
-    28,
-    -17,
-    'SHIFT MEMORIAL · UNAUTHORIZED',
-    'For the thirty-two miners lost below Shaft Four.\n\nThe governor called them contractors. The prince called them Imperial subjects. The Empire did not answer.',
-  )
-
-  const ghostSpawns = [
-    new THREE.Vector3(-24, 1.8, 43),
-    new THREE.Vector3(24, 1.8, 43),
-    new THREE.Vector3(-24, 1.8, 20),
-    new THREE.Vector3(24, 1.8, 20),
-    new THREE.Vector3(-24, 1.8, -4),
-    new THREE.Vector3(24, 1.8, -4),
-    new THREE.Vector3(-24, 1.8, -35),
-    new THREE.Vector3(24, 1.8, -35),
-    new THREE.Vector3(0, 1.8, -47),
-    new THREE.Vector3(0, 1.8, 51),
-  ]
-
-  const exterior = new THREE.Group()
-  const starCount = 520
-  const starPositions = new Float32Array(starCount * 3)
-  for (let index = 0; index < starCount; index += 1) {
-    const radius = 180 + seeded(index + 30) * 260
-    const theta = seeded(index + 300) * Math.PI * 2
-    const phi = Math.acos(2 * seeded(index + 900) - 1)
-    starPositions[index * 3] = Math.sin(phi) * Math.cos(theta) * radius
-    starPositions[index * 3 + 1] = Math.cos(phi) * radius
-    starPositions[index * 3 + 2] = Math.sin(phi) * Math.sin(theta) * radius
-  }
-  const starGeometry = new THREE.BufferGeometry()
-  starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3))
-  const starMaterial = new THREE.PointsMaterial({ color: 0xd8e2e1, size: 0.62, sizeAttenuation: true, fog: false })
-  exterior.add(new THREE.Points(starGeometry, starMaterial))
-  const planetMaterial = new THREE.MeshStandardMaterial({ color: 0x252a2e, roughness: 1, metalness: 0.06, fog: false })
-  const planet = new THREE.Mesh(new THREE.SphereGeometry(38, 36, 20), planetMaterial)
-  planet.position.set(32, 21, 172)
-  planet.scale.y = 0.97
-  exterior.add(planet)
-  const deadLight = new THREE.DirectionalLight(0xb7c2c8, 2.1)
-  deadLight.position.set(-80, 45, 95)
-  deadLight.target.position.copy(planet.position)
-  exterior.add(deadLight, deadLight.target)
-  const moon = new THREE.Mesh(
-    new THREE.PlaneGeometry(260, 220, 1, 1),
-    new THREE.MeshStandardMaterial({ color: 0x26292a, roughness: 1, fog: false }),
-  )
-  moon.rotation.x = -Math.PI / 2
-  moon.position.set(0, -4.2, 115)
-  exterior.add(moon)
-  scene.add(exterior)
-
-  function districtAt(x: number, z: number): string {
-    if (z > 47) return 'OBSERVATION GALLERY'
-    if (Math.abs(x) < 6) return 'CENTRAL TRANSIT SPINE'
-    if (z > 34) return x < 0 ? 'HABITATION RING' : 'RECORDS ANNEX'
-    if (z > 10) return x < 0 ? 'EQUIPMENT BAY 03' : 'SECURITY STORES'
-    if (z > -16) return x < 0 ? 'CROWN RELAY' : 'LIFE SUPPORT'
-    return x < 0 ? 'MACHINE SHOP' : 'THERMAL EXCHANGE'
-  }
-
-  function markUsed(interaction: StationInteraction): void {
-    interaction.used = true
-    if (!['life-support', 'coolant', 'relay', 'lore'].includes(interaction.kind)) {
-      interaction.group.visible = false
-    }
-  }
-
-  function setSystemRepaired(interaction: StationInteraction): void {
-    interaction.used = true
-    if (interaction.screen) {
-      interaction.screen.material.color.setHex(0x5ea9a5)
-    }
-  }
-
-  function reset(): void {
-    for (const interaction of interactions) {
-      interaction.used = false
-      interaction.group.visible = true
-      if (interaction.screen) interaction.screen.material.color.setHex(0x8c2b20)
-    }
-  }
-
-  function update(dt: number, elapsed: number): void {
-    for (const alarm of alarms) {
-      alarm.pivot.rotation.y = elapsed * 2.35 + alarm.phase
-      const pulse = 0.55 + Math.max(0, Math.sin(elapsed * 5.5 + alarm.phase)) * 0.75
-      alarm.lamp.intensity = 3.4 * pulse
-      alarm.beam.material.opacity = 0.035 + pulse * 0.045
-    }
-    for (let index = 0; index < flickerMaterials.length; index += 1) {
-      const material = flickerMaterials[index]
-      const drop = seeded(Math.floor(elapsed * 11) + index * 17) > 0.89 ? 0.18 : 1
-      material.color.multiplyScalar(drop)
-      if (material.color.r < 0.2) {
-        material.color.setHex(index === 8 || index === 3 ? 0x93c4ca : 0xbd291c)
-      }
-    }
-    for (const emitter of sparks) {
-      const attribute = emitter.points.geometry.getAttribute('position') as THREE.BufferAttribute
-      const active = Math.sin(elapsed * 2.7 + emitter.phase) > 0.56 || Math.sin(elapsed * 8.9 + emitter.phase) > 0.88
-      emitter.points.visible = active
-      for (let index = 0; index < attribute.count; index += 1) {
-        let x = attribute.getX(index) + emitter.velocities[index * 3] * dt
-        let y = attribute.getY(index) + emitter.velocities[index * 3 + 1] * dt
-        let z = attribute.getZ(index) + emitter.velocities[index * 3 + 2] * dt
-        if (y < emitter.origin.y - 2.25) {
-          x = emitter.origin.x
-          y = emitter.origin.y
-          z = emitter.origin.z
-        }
-        attribute.setXYZ(index, x, y, z)
-      }
-      attribute.needsUpdate = true
-    }
-    for (let index = 0; index < interactions.length; index += 1) {
-      const interaction = interactions[index]
-      if (interaction.used || ['life-support', 'coolant', 'relay', 'lore'].includes(interaction.kind)) continue
-      interaction.group.rotation.y += dt * 0.62
-      interaction.group.position.y = interaction.position.y + Math.sin(elapsed * 1.7 + index) * 0.08
-    }
-    planet.rotation.y += dt * 0.003
-  }
-
-  return {
-    colliders,
-    interactions,
-    ghostSpawns,
-    districtAt,
-    update,
-    markUsed,
-    setSystemRepaired,
-    reset,
-  }
-}
+      label
