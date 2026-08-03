@@ -107,4 +107,4 @@ jobs:
             Skyfall-Orison-9.apk \
             Skyfall-Orison-9.apk.sha256 \
             --title "Skyfall: Orison-9 Android build ${GITHUB_RUN_NUMBER}" \
-            --notes "Skyfall v0.2.0 Shaft Four texture and mine expansion. Install Skyfall-Orison-9.apk on Android and play in landscape."
+            --notes "Skyfall v0.2.1 mobile performance and visibility hotfix. Install Skyfall-Orison-9.apk on Android and play in landscape."

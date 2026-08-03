@@ -196,14 +196,14 @@ const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in win
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x05080b)
 scene.fog = new THREE.FogExp2(0x080c0f, 0.0032)
-scene.add(new THREE.AmbientLight(0xa8b3b3, 1.2))
-const coldFill = new THREE.HemisphereLight(0xc8d8d8, 0x202627, 1.06)
+scene.add(new THREE.AmbientLight(0xb8c1c0, 2.28))
+const coldFill = new THREE.HemisphereLight(0xd3dfde, 0x3c4241, 1.62)
 scene.add(coldFill)
 
 const camera = new THREE.PerspectiveCamera(69, innerWidth / innerHeight, 0.06, 500)
 camera.rotation.order = 'YXZ'
 scene.add(camera)
-const emergencyTorch = new THREE.SpotLight(0xd7e4e4, 48, 38, Math.PI * 0.23, 0.64, 1.35)
+const emergencyTorch = new THREE.SpotLight(0xdce8e7, 66, 44, Math.PI * 0.27, 0.68, 1.3)
 emergencyTorch.position.set(0, 0.08, 0.05)
 emergencyTorch.target.position.set(0, -0.15, -4)
 camera.add(emergencyTorch, emergencyTorch.target)
@@ -212,13 +212,15 @@ const renderer = new THREE.WebGLRenderer({
   canvas: ui.canvas,
   antialias: !isTouch,
   powerPreference: 'high-performance',
+  precision: isTouch ? 'mediump' : 'highp',
+  stencil: false,
 })
-let renderPixelRatio = Math.min(devicePixelRatio || 1, isTouch ? 0.92 : 1.55)
+let renderPixelRatio = Math.min(devicePixelRatio || 1, isTouch ? 0.66 : 1.35)
 renderer.setPixelRatio(renderPixelRatio)
 renderer.setSize(innerWidth, innerHeight)
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.toneMapping = THREE.ACESFilmicToneMapping
-renderer.toneMappingExposure = 2
+renderer.toneMappingExposure = 2.3
 
 const world = buildStation(scene)
 const clock = new THREE.Clock()
@@ -298,7 +300,7 @@ function loadGunTexture(path: string): THREE.Texture {
   texture.colorSpace = THREE.SRGBColorSpace
   texture.wrapS = THREE.RepeatWrapping
   texture.wrapT = THREE.RepeatWrapping
-  texture.anisotropy = 4
+  texture.anisotropy = 2
   return texture
 }
 const gunDark = new THREE.MeshStandardMaterial({
@@ -365,9 +367,6 @@ const muzzle = new THREE.Mesh(
 muzzle.position.set(0, 0.03, -2.06)
 muzzle.visible = false
 gun.add(muzzle)
-const muzzleLight = new THREE.PointLight(0xff893d, 0, 6.5, 1.6)
-muzzleLight.position.copy(muzzle.position)
-gun.add(muzzleLight)
 gun.visible = false
 
 function currentWeapon(): WeaponDefinition | null {
@@ -686,13 +685,16 @@ function updateLift(dt: number): void {
   const floorY = THREE.MathUtils.lerp(lift.fromFloorY, lift.toFloorY, eased)
   world.setLiftY(floorY)
   player.position.set(liftX, floorY + 1.72, liftZ)
-  audio.setMineActive(lift.toMine ? linear > 0.42 : linear < 0.58)
+  const mineActive = lift.toMine ? linear > 0.42 : linear < 0.58
+  audio.setMineActive(mineActive)
+  world.setMineActive(mineActive)
   if (linear < 1) return
   player.position.y = lift.toMine ? mineEyeY : stationEyeY
   world.setLiftY(lift.toFloorY)
   state.lift = null
   state.interactionCooldown = 0.9
   audio.setMineActive(lift.toMine)
+  world.setMineActive(lift.toMine)
   audio.liftArrived()
   showBanner(lift.toMine ? 'SHAFT FOUR' : 'ORISON-9 OPERATIONS', lift.toMine ? 'CORE PUMP ACCESS · HEAT WARNING' : 'STATION LEVEL · EVACUATION ACTIVE', 3.2)
 }
@@ -738,7 +740,6 @@ function fireWeapon(): void {
   state.recoil = Math.min(1, state.recoil + (weapon.id === 'scattergun' ? 0.92 : 0.62))
   state.muzzleTimer = weapon.id === 'scattergun' ? 0.07 : 0.045
   muzzle.visible = true
-  muzzleLight.intensity = weapon.id === 'scattergun' ? 6.5 : 4.2
   audio.gunshot(weapon.id === 'scattergun')
   if (!weapon.automatic) state.fireHeld = false
   if (state.ammo % 4 === 0) void Haptics.impact({ style: ImpactStyle.Light }).catch(() => undefined)
@@ -962,7 +963,9 @@ function updatePlayer(dt: number): void {
     gun.visible = !hasScope
   }
   ui.district.textContent = world.districtAt(player.position.x, player.position.y, player.position.z)
-  audio.setMineActive(player.position.y < -13)
+  const mineActive = player.position.y < -13
+  audio.setMineActive(mineActive)
+  world.setMineActive(mineActive)
   updateInteractionPrompt()
 }
 
@@ -994,10 +997,8 @@ function updateInterfaceTimers(dt: number): void {
   if (state.muzzleTimer > 0) {
     state.muzzleTimer -= dt
     muzzle.visible = true
-    muzzleLight.intensity = 78 * Math.max(0, state.muzzleTimer / 0.045)
   } else {
     muzzle.visible = false
-    muzzleLight.intensity = 0
   }
 }
 
@@ -1018,7 +1019,7 @@ function cycleSensitivity(): void {
 
 function cycleBrightness(): void {
   state.brightnessIndex = (state.brightnessIndex + 1) % 3
-  renderer.toneMappingExposure = [1.65, 2, 2.3][state.brightnessIndex]
+  renderer.toneMappingExposure = [2, 2.3, 2.6][state.brightnessIndex]
   refreshPauseSettings()
 }
 
@@ -1321,12 +1322,12 @@ function updateAdaptiveResolution(rawDelta: number): void {
   if (!isTouch || !state.started || state.paused || state.gameOver || rawDelta > 0.2) return
   adaptiveSeconds += rawDelta
   adaptiveFrames += 1
-  if (adaptiveSeconds < 2.4) return
+  if (adaptiveSeconds < 1.15) return
   const averageFps = adaptiveFrames / adaptiveSeconds
   const previous = renderPixelRatio
-  if (averageFps < 43) renderPixelRatio = Math.max(0.68, renderPixelRatio - 0.075)
-  else if (averageFps < 51) renderPixelRatio = Math.max(0.68, renderPixelRatio - 0.045)
-  else if (averageFps > 58) renderPixelRatio = Math.min(0.92, renderPixelRatio + 0.025)
+  if (averageFps < 44) renderPixelRatio = Math.max(0.46, renderPixelRatio - 0.08)
+  else if (averageFps < 54) renderPixelRatio = Math.max(0.46, renderPixelRatio - 0.04)
+  else if (averageFps > 58) renderPixelRatio = Math.min(0.74, renderPixelRatio + 0.02)
   adaptiveSeconds = 0
   adaptiveFrames = 0
   if (Math.abs(previous - renderPixelRatio) < 0.001) return
@@ -1337,11 +1338,11 @@ function updateAdaptiveResolution(rawDelta: number): void {
 function animate(): void {
   requestAnimationFrame(animate)
   const rawDelta = clock.getDelta()
-  const dt = Math.min(rawDelta, 0.04)
+  const dt = Math.min(rawDelta, 0.075)
   elapsed += dt
   updateAdaptiveResolution(rawDelta)
-  world.update(dt, elapsed)
   if (state.started && !state.paused && !state.documentOpen && !state.gameOver) {
+    world.update(dt, elapsed)
     state.fireCooldown = Math.max(0, state.fireCooldown - dt)
     state.interactionCooldown = Math.max(0, state.interactionCooldown - dt)
     updateLift(dt)

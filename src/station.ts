@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 
 export type Collider = {
   minX: number
@@ -38,7 +39,6 @@ export type StationInteraction = {
 
 type AlarmFixture = {
   pivot: THREE.Group
-  lamp: THREE.PointLight
   beam: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>
   phase: number
 }
@@ -52,7 +52,6 @@ type SparkEmitter = {
 
 type HeatVent = {
   flame: THREE.Sprite
-  light: THREE.PointLight
   phase: number
 }
 
@@ -65,6 +64,7 @@ export type StationWorld = {
   markUsed: (interaction: StationInteraction) => void
   setSystemRepaired: (interaction: StationInteraction) => void
   setLiftY: (floorY: number) => void
+  setMineActive: (active: boolean) => void
   reset: () => void
 }
 
@@ -87,10 +87,16 @@ export function buildStation(scene: THREE.Scene): StationWorld {
   const alarms: AlarmFixture[] = []
   const sparks: SparkEmitter[] = []
   const heatVents: HeatVent[] = []
+  const mineLights: THREE.PointLight[] = []
+  let mineActive = false
   const flickerMaterials: Array<{ material: THREE.MeshBasicMaterial; baseColor: number; phase: number }> = []
+  const staticGeometry = new Map<THREE.Material, THREE.BufferGeometry[]>()
   const station = new THREE.Group()
   station.name = 'Orison-9 mine and station'
   scene.add(station)
+  const mineFill = new THREE.AmbientLight(0xaa4633, 2)
+  mineFill.visible = false
+  station.add(mineFill)
 
   const loader = new THREE.TextureLoader()
   function loadSurfaceTexture(path: string, repeatX: number, repeatY: number): THREE.Texture {
@@ -99,7 +105,7 @@ export function buildStation(scene: THREE.Scene): StationWorld {
     texture.wrapS = THREE.RepeatWrapping
     texture.wrapT = THREE.RepeatWrapping
     texture.repeat.set(repeatX, repeatY)
-    texture.anisotropy = 4
+    texture.anisotropy = 2
     return texture
   }
 
@@ -116,28 +122,26 @@ export function buildStation(scene: THREE.Scene): StationWorld {
   const weaponBarrelTexture = loadSurfaceTexture('./assets/textures/weapon-barrel.webp', 1, 1)
 
   const materials = {
-    floor: new THREE.MeshStandardMaterial({ map: floorTexture, color: 0xc1c3c0, roughness: 0.83, metalness: 0.56 }),
-    floorInset: new THREE.MeshStandardMaterial({ map: floorTexture, color: 0x777e7f, roughness: 0.9, metalness: 0.66 }),
-    wall: new THREE.MeshStandardMaterial({ map: wallTexture, color: 0xd2d2cd, roughness: 0.83, metalness: 0.52 }),
-    wallDark: new THREE.MeshStandardMaterial({ map: wallTexture, color: 0x929796, roughness: 0.88, metalness: 0.58 }),
-    ceiling: new THREE.MeshStandardMaterial({ map: ceilingTexture, color: 0x777f80, roughness: 0.97, metalness: 0.14 }),
-    trim: new THREE.MeshStandardMaterial({ map: rustTexture, color: 0x765044, roughness: 0.82, metalness: 0.62 }),
-    rust: new THREE.MeshStandardMaterial({ map: rustTexture, color: 0x593b35, roughness: 0.92, metalness: 0.5 }),
-    pipe: new THREE.MeshStandardMaterial({ map: weaponSteelTexture, color: 0x999f9e, roughness: 0.5, metalness: 0.84 }),
-    machine: new THREE.MeshStandardMaterial({ map: weaponBlackTexture, color: 0xa9aaa5, roughness: 0.58, metalness: 0.82 }),
-    machineRed: new THREE.MeshStandardMaterial({ map: weaponRedTexture, color: 0x9a8580, roughness: 0.68, metalness: 0.72 }),
-    barrel: new THREE.MeshStandardMaterial({ map: weaponBarrelTexture, color: 0xaaa49e, roughness: 0.47, metalness: 0.9 }),
-    black: new THREE.MeshStandardMaterial({ map: weaponBlackTexture, color: 0x696d6c, roughness: 0.7, metalness: 0.75 }),
-    grate: new THREE.MeshStandardMaterial({ map: grateTexture, color: 0xaaa09a, roughness: 0.82, metalness: 0.76 }),
-    rock: new THREE.MeshStandardMaterial({ map: moltenTexture, color: 0x292a28, roughness: 1, metalness: 0.02 }),
-    lava: new THREE.MeshStandardMaterial({
+    floor: new THREE.MeshLambertMaterial({ map: floorTexture, color: 0xbfc3c0 }),
+    floorInset: new THREE.MeshLambertMaterial({ map: floorTexture, color: 0x7f8787 }),
+    wall: new THREE.MeshLambertMaterial({ map: wallTexture, color: 0xc9cecb }),
+    wallDark: new THREE.MeshLambertMaterial({ map: wallTexture, color: 0x8e9795 }),
+    ceiling: new THREE.MeshLambertMaterial({ map: ceilingTexture, color: 0x838b8b }),
+    trim: new THREE.MeshLambertMaterial({ map: rustTexture, color: 0x865d50 }),
+    rust: new THREE.MeshLambertMaterial({ map: rustTexture, color: 0x704a40 }),
+    pipe: new THREE.MeshLambertMaterial({ map: weaponSteelTexture, color: 0xaeb4b2 }),
+    machine: new THREE.MeshLambertMaterial({ map: weaponBlackTexture, color: 0xa9aaa5 }),
+    machineRed: new THREE.MeshLambertMaterial({ map: weaponRedTexture, color: 0xa88d87 }),
+    barrel: new THREE.MeshLambertMaterial({ map: weaponBarrelTexture, color: 0xb9b2aa }),
+    black: new THREE.MeshLambertMaterial({ map: weaponBlackTexture, color: 0x737978 }),
+    grate: new THREE.MeshLambertMaterial({ map: grateTexture, color: 0xb2aaa4 }),
+    rock: new THREE.MeshLambertMaterial({ map: moltenTexture, color: 0x393735 }),
+    lava: new THREE.MeshLambertMaterial({
       map: moltenTexture,
       emissiveMap: moltenTexture,
       emissive: 0xff3b14,
-      emissiveIntensity: 1.32,
+      emissiveIntensity: 1.82,
       color: 0x4f312b,
-      roughness: 0.94,
-      metalness: 0.02,
     }),
     glass: new THREE.MeshPhysicalMaterial({
       color: 0x65828a,
@@ -193,10 +197,19 @@ export function buildStation(scene: THREE.Scene): StationWorld {
     material: THREE.Material,
     solid = false,
     parent: THREE.Object3D = station,
+    immediate = false,
   ): THREE.Mesh {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material)
     mesh.position.set(x, y, z)
-    parent.add(mesh)
+    if (parent === station && !immediate) {
+      mesh.updateMatrix()
+      mesh.geometry.applyMatrix4(mesh.matrix)
+      const queued = staticGeometry.get(material) ?? []
+      queued.push(mesh.geometry)
+      staticGeometry.set(material, queued)
+    } else {
+      parent.add(mesh)
+    }
     if (solid && parent === station) addCollider(x, y, z, width, height, depth)
     return mesh
   }
@@ -215,8 +228,28 @@ export function buildStation(scene: THREE.Scene): StationWorld {
     const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, segments), material)
     mesh.position.set(x, y, z)
     mesh.rotation.z = rotationZ
-    parent.add(mesh)
+    if (parent === station) {
+      mesh.updateMatrix()
+      mesh.geometry.applyMatrix4(mesh.matrix)
+      const queued = staticGeometry.get(material) ?? []
+      queued.push(mesh.geometry)
+      staticGeometry.set(material, queued)
+    } else {
+      parent.add(mesh)
+    }
     return mesh
+  }
+
+  function flushStaticGeometry(): void {
+    for (const [material, geometries] of staticGeometry) {
+      const merged = mergeGeometries(geometries, false)
+      if (!merged) throw new Error('Static station geometry could not be merged.')
+      merged.computeBoundingBox()
+      merged.computeBoundingSphere()
+      station.add(new THREE.Mesh(merged, material))
+      for (const geometry of geometries) geometry.dispose()
+    }
+    staticGeometry.clear()
   }
 
   function addWallSegment(
@@ -254,7 +287,7 @@ export function buildStation(scene: THREE.Scene): StationWorld {
   addWallSegment(34, 2, 0.65, 114)
   addWallSegment(0, -55, 68, 0.65)
 
-  const observationGlass = addBox(67.2, 5.05, 0.18, 0, 2.67, 59, materials.glass)
+  const observationGlass = addBox(67.2, 5.05, 0.18, 0, 2.67, 59, materials.glass, false, station, true)
   observationGlass.renderOrder = 2
   addCollider(0, 2.67, 59, 67.2, 5.05, 0.18)
   for (const x of [-34, -25.5, -17, -8.5, 0, 8.5, 17, 25.5, 34]) {
@@ -306,11 +339,10 @@ export function buildStation(scene: THREE.Scene): StationWorld {
 
   function addPracticalLight(x: number, z: number, width: number, intensity: number, phase: number): void {
     const material = materials.cold.clone()
-    flickerMaterials.push({ material, baseColor: 0xaed3d4, phase })
+    const baseColor = intensity >= 34 ? 0xc5dddd : 0xaac4c5
+    material.color.setHex(baseColor)
+    flickerMaterials.push({ material, baseColor, phase })
     addBox(width, 0.085, 0.28, x, 5.36, z, material)
-    const light = new THREE.PointLight(0xc5dcdb, intensity * 1.62, 23, 1.5)
-    light.position.set(x, 4.78, z)
-    station.add(light)
   }
   for (const [x, z, width, intensity, phase] of [
     [-18, 50, 5.8, 42, 0.2], [18, 50, 5.8, 42, 1.1],
@@ -341,11 +373,8 @@ export function buildStation(scene: THREE.Scene): StationWorld {
     beam.rotation.z = -Math.PI / 2
     beam.position.x = 3.05
     pivot.add(beam)
-    const lamp = new THREE.PointLight(0xff321f, 44, 15, 1.7)
-    lamp.position.x = 0.3
-    pivot.add(lamp)
     station.add(pivot)
-    alarms.push({ pivot, lamp, beam, phase })
+    alarms.push({ pivot, beam, phase })
   }
   addAlarm(-5.7, 4.55, 35, 0.2)
   addAlarm(5.7, 4.55, 12, 1.8, Math.PI)
@@ -505,8 +534,6 @@ export function buildStation(scene: THREE.Scene): StationWorld {
     )
     ring.rotation.x = Math.PI / 2
     group.add(ring)
-    const glow = new THREE.PointLight(accent, 10, 4.2, 1.6)
-    group.add(glow)
     return group
   }
 
@@ -661,9 +688,6 @@ export function buildStation(scene: THREE.Scene): StationWorld {
   addBox(0.16, 1.1, 5.0, 2.62, 0.55, 0, materials.pipe, false, lift)
   const liftLightPanel = new THREE.MeshBasicMaterial({ color: 0xa12e20, toneMapped: false })
   addBox(1.8, 0.06, 0.22, 0, 2.86, -0.4, liftLightPanel, false, lift)
-  const liftLight = new THREE.PointLight(0xd5472d, 25, 8, 1.6)
-  liftLight.position.set(0, 2.55, 0)
-  lift.add(liftLight)
   station.add(lift)
 
   addBox(0.5, 34, 6.6, -3.25, -13.5, liftZ, materials.wallDark, true)
@@ -688,11 +712,9 @@ export function buildStation(scene: THREE.Scene): StationWorld {
   // SHAFT FOUR: a catwalk ring around the excavation and its core-pumping drill.
   const cavernShell = new THREE.Mesh(
     new THREE.SphereGeometry(52, 20, 12),
-    new THREE.MeshStandardMaterial({
+    new THREE.MeshLambertMaterial({
       map: moltenTexture,
-      color: 0x292421,
-      roughness: 1,
-      metalness: 0,
+      color: 0x3c302c,
       side: THREE.BackSide,
     }),
   )
@@ -781,20 +803,16 @@ export function buildStation(scene: THREE.Scene): StationWorld {
   lava.rotation.x = -Math.PI / 2
   lava.position.set(0, mineFloorY - 19.2, -19.5)
   station.add(lava)
-  for (const [x, z] of [[-11, -26], [11, -14], [0, -32]] as const) {
-    const glow = new THREE.PointLight(0xff3c16, 125, 38, 1.65)
-    glow.position.set(x, mineFloorY - 10, z)
-    station.add(glow)
-  }
-  for (const [x, z, color] of [
-    [0, -20, 0xc54125],
-    [-20, -20, 0x9b3425],
-    [20, -20, 0xb13b25],
-    [0, -40, 0x843025],
+  for (const [x, y, z, color, intensity, distance] of [
+    [0, mineFloorY + 5.5, -20, 0xc54125, 118, 38],
+    [-11, mineFloorY - 8, -27, 0xff3c16, 96, 32],
+    [11, mineFloorY - 8, -13, 0xff4a1e, 96, 32],
   ] as const) {
-    const fill = new THREE.PointLight(color, x === 0 && z === -20 ? 112 : 72, 36, 1.45)
-    fill.position.set(x, mineFloorY + 5.5, z)
-    station.add(fill)
+    const light = new THREE.PointLight(color, intensity, distance, 1.55)
+    light.position.set(x, y, z)
+    light.visible = false
+    station.add(light)
+    mineLights.push(light)
   }
 
   const drill = new THREE.Group()
@@ -834,18 +852,12 @@ export function buildStation(scene: THREE.Scene): StationWorld {
     flame.position.set(x, mineFloorY - 1.3, z)
     flame.scale.set(2.2, 4.5, 1)
     station.add(flame)
-    const light = new THREE.PointLight(0xff3b17, 34, 12, 1.8)
-    light.position.set(x, mineFloorY - 0.2, z)
-    station.add(light)
-    heatVents.push({ flame, light, phase })
+    heatVents.push({ flame, phase })
   }
 
-  const mineLightMaterial = new THREE.MeshBasicMaterial({ color: 0xa42d1f, toneMapped: false })
+  const mineLightMaterial = new THREE.MeshBasicMaterial({ color: 0xf04a2c, toneMapped: false })
   for (const [x, z] of [[-22, -40], [22, -40], [-22, 1], [22, 1], [29, -30]] as const) {
     addBox(1.8, 0.18, 0.4, x, mineFloorY + 2.8, z, mineLightMaterial)
-    const mineLight = new THREE.PointLight(0xd4472b, 64, 20, 1.55)
-    mineLight.position.set(x, mineFloorY + 2.4, z)
-    station.add(mineLight)
   }
   addAlarm(19.8, mineFloorY + 2.25, -22, 2.6, Math.PI / 2)
 
@@ -884,14 +896,9 @@ export function buildStation(scene: THREE.Scene): StationWorld {
     new THREE.PointsMaterial({ color: 0xc9d2d0, size: 0.58, sizeAttenuation: true, fog: false }),
   ))
 
-  const planetMaterial = new THREE.MeshStandardMaterial({
+  const planetMaterial = new THREE.MeshBasicMaterial({
     map: planetTexture,
-    emissiveMap: planetTexture,
-    emissive: 0x35130d,
-    emissiveIntensity: 0.2,
-    color: 0x8d8782,
-    roughness: 1,
-    metalness: 0.01,
+    color: 0x9b918a,
     fog: false,
   })
   const planet = new THREE.Mesh(new THREE.SphereGeometry(42, 40, 24), planetMaterial)
@@ -913,13 +920,9 @@ export function buildStation(scene: THREE.Scene): StationWorld {
   planetHalo.position.copy(planet.position)
   planetHalo.scale.y = 0.975
   exterior.add(planetHalo)
-  const deadLight = new THREE.DirectionalLight(0xaab6b9, 1.65)
-  deadLight.position.set(-80, 45, 95)
-  deadLight.target.position.copy(planet.position)
-  exterior.add(deadLight, deadLight.target)
   const moon = new THREE.Mesh(
     new THREE.PlaneGeometry(300, 240),
-    new THREE.MeshStandardMaterial({ map: planetTexture, color: 0x4b4b49, roughness: 1, fog: false }),
+    new THREE.MeshBasicMaterial({ map: planetTexture, color: 0x454542, fog: false }),
   )
   moon.rotation.x = -Math.PI / 2
   moon.position.set(0, -4.8, 130)
@@ -976,6 +979,13 @@ export function buildStation(scene: THREE.Scene): StationWorld {
     lift.position.y = floorY
   }
 
+  function setMineActive(active: boolean): void {
+    if (mineActive === active) return
+    mineActive = active
+    mineFill.visible = active
+    for (const light of mineLights) light.visible = active
+  }
+
   function reset(): void {
     for (const interaction of interactions) {
       interaction.used = false
@@ -983,13 +993,13 @@ export function buildStation(scene: THREE.Scene): StationWorld {
       if (interaction.screen) interaction.screen.material.color.setHex(0x7b291f)
     }
     setLiftY(stationFloorY)
+    setMineActive(false)
   }
 
   function update(dt: number, elapsed: number): void {
     for (const alarm of alarms) {
       alarm.pivot.rotation.y += dt * 2.15
       const pulse = 0.5 + Math.max(0, Math.sin(elapsed * 5.2 + alarm.phase)) * 0.72
-      alarm.lamp.intensity = 38 * pulse
       alarm.beam.material.opacity = 0.025 + pulse * 0.038
     }
     for (let index = 0; index < flickerMaterials.length; index += 1) {
@@ -1024,13 +1034,14 @@ export function buildStation(scene: THREE.Scene): StationWorld {
       const pulse = 0.68 + Math.sin(elapsed * 7.2 + vent.phase) * 0.18 + Math.sin(elapsed * 12.6 + vent.phase) * 0.1
       vent.flame.scale.set(1.8 + pulse * 0.45, 3.4 + pulse * 1.25, 1)
       vent.flame.material.opacity = 0.2 + pulse * 0.22
-      vent.light.intensity = 24 + pulse * 22
     }
     drillRotor.rotation.y += dt * 0.68
     drillHammer.position.y = Math.sin(elapsed * 1.14) * 0.42
-    lava.material.emissiveIntensity = 1.16 + Math.sin(elapsed * 0.82) * 0.16
+    lava.material.emissiveIntensity = 1.72 + Math.sin(elapsed * 0.82) * 0.2
     planet.rotation.y += dt * 0.0022
   }
+
+  flushStaticGeometry()
 
   return {
     colliders,
@@ -1041,6 +1052,7 @@ export function buildStation(scene: THREE.Scene): StationWorld {
     markUsed,
     setSystemRepaired,
     setLiftY,
+    setMineActive,
     reset,
   }
 }

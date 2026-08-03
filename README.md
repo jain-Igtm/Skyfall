@@ -13,6 +13,7 @@ The current playable build includes:
 - a lightweight suit and clear breathing shield to collect
 - textured weapon models and tool pickups, three damaged critical systems, and repair objectives spanning both levels
 - phasing space ghosts, escalating waves, combat, health, ammunition, and scoring
+- batched station geometry, simplified ghost rendering, and adaptive mobile resolution for stable play on lower-power phones
 - environmental evidence of the Empire's long administrative decline
 - a Capacitor Android target and GitHub Actions APK build
 

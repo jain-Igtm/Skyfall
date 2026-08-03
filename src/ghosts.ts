@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 
 export type Ghost = {
   group: THREE.Group
@@ -50,18 +51,13 @@ const ghostFragmentShader = `
   varying float vFresnel;
   varying float vRipple;
 
-  float hash(vec2 point) {
-    return fract(sin(dot(point, vec2(127.1, 311.7))) * 43758.5453123);
-  }
-
   void main() {
     vec2 textureUv = vec2(vUv.x * 1.15 + sin(vUv.y * 9.0 + uTime) * 0.025, vUv.y * 1.42 - uTime * 0.018);
     vec3 ectoplasm = texture2D(uEctoplasm, textureUv).rgb;
     float ectoplasmLight = dot(ectoplasm, vec3(0.2126, 0.7152, 0.0722));
     float crawling = sin(vUv.y * 39.0 - uTime * 5.2 + sin(vUv.x * 17.0 + uPhase) * 2.0);
-    float breakUp = hash(floor(vUv * vec2(22.0, 34.0) + uTime * 1.7));
     float ragged = smoothstep(0.02, 0.31, vUv.y + sin(vUv.x * 28.0 + uPhase) * 0.055);
-    float alpha = (0.07 + vFresnel * 0.38 + max(0.0, crawling) * 0.06 + breakUp * 0.04 + ectoplasmLight * 0.15) * ragged * uFade;
+    float alpha = (0.08 + vFresnel * 0.4 + max(0.0, crawling) * 0.07 + ectoplasmLight * 0.16) * ragged * uFade;
     vec3 cold = mix(vec3(0.12, 0.28, 0.31), vec3(0.58, 0.86, 0.88), vFresnel + uFlash * 0.72);
     cold = mix(cold, ectoplasm * vec3(0.72, 0.95, 1.0), 0.42);
     cold += vec3(0.08, 0.18, 0.2) * abs(vRipple) * 8.0;
@@ -73,7 +69,7 @@ const ectoplasmTexture = new THREE.TextureLoader().load('./assets/textures/ghost
 ectoplasmTexture.colorSpace = THREE.SRGBColorSpace
 ectoplasmTexture.wrapS = THREE.RepeatWrapping
 ectoplasmTexture.wrapT = THREE.RepeatWrapping
-ectoplasmTexture.anisotropy = 4
+ectoplasmTexture.anisotropy = 2
 
 function createGhostMaterial(phase: number): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
@@ -88,7 +84,7 @@ function createGhostMaterial(phase: number): THREE.ShaderMaterial {
     fragmentShader: ghostFragmentShader,
     transparent: true,
     depthWrite: false,
-    side: THREE.DoubleSide,
+    side: THREE.FrontSide,
     blending: THREE.AdditiveBlending,
   })
 }
@@ -105,7 +101,8 @@ export function createGhost(
   group.position.copy(position)
   group.scale.setScalar(0.92 + Math.random() * 0.2)
 
-  const torsoGeometry = new THREE.CylinderGeometry(0.42, 0.83, 2.65, 11, 5, true)
+  const bodyParts: THREE.BufferGeometry[] = []
+  const torsoGeometry = new THREE.CylinderGeometry(0.42, 0.83, 2.65, 9, 3, true)
   const torsoPositions = torsoGeometry.getAttribute('position') as THREE.BufferAttribute
   for (let index = 0; index < torsoPositions.count; index += 1) {
     const y = torsoPositions.getY(index)
@@ -114,34 +111,33 @@ export function createGhost(
     }
   }
   torsoGeometry.computeVertexNormals()
-  const torso = new THREE.Mesh(torsoGeometry, material)
-  torso.position.y = -0.2
-  group.add(torso)
+  torsoGeometry.translate(0, -0.2, 0)
+  bodyParts.push(torsoGeometry)
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 9), material)
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 7), material)
   head.scale.set(0.76, 1.08, 0.72)
   head.position.y = 1.48
   group.add(head)
 
-  const armGeometry = new THREE.CylinderGeometry(0.09, 0.18, 2.25, 7, 3, true)
-  const leftArm = new THREE.Mesh(armGeometry, material)
-  leftArm.position.set(-0.62, -0.1, 0)
-  leftArm.rotation.z = -0.15
-  group.add(leftArm)
-  const rightArm = new THREE.Mesh(armGeometry, material)
-  rightArm.position.set(0.62, -0.1, 0)
-  rightArm.rotation.z = 0.15
-  group.add(rightArm)
+  for (const [x, rotation] of [[-0.62, -0.15], [0.62, 0.15]] as const) {
+    const arm = new THREE.CylinderGeometry(0.09, 0.18, 2.25, 6, 1, true)
+    arm.rotateZ(rotation)
+    arm.translate(x, -0.1, 0)
+    bodyParts.push(arm)
+  }
 
   for (let index = 0; index < 4; index += 1) {
-    const wisp = new THREE.Mesh(
-      new THREE.ConeGeometry(0.22 + index * 0.025, 1.5 + (index % 2) * 0.38, 6, 2, true),
-      material,
-    )
-    wisp.position.set(-0.48 + index * 0.32, -1.85 + Math.sin(index) * 0.13, 0)
-    wisp.rotation.z = (index - 1.5) * 0.09
-    group.add(wisp)
+    const wisp = new THREE.ConeGeometry(0.22 + index * 0.025, 1.5 + (index % 2) * 0.38, 5, 1, true)
+    wisp.rotateZ((index - 1.5) * 0.09)
+    wisp.translate(-0.48 + index * 0.32, -1.85 + Math.sin(index) * 0.13, 0)
+    bodyParts.push(wisp)
   }
+
+  const bodyGeometry = mergeGeometries(bodyParts, false)
+  if (!bodyGeometry) throw new Error('Ghost body geometry could not be merged.')
+  for (const geometry of bodyParts) geometry.dispose()
+  const body = new THREE.Mesh(bodyGeometry, material)
+  group.add(body)
 
   const voidMaterials: THREE.MeshBasicMaterial[] = []
   const voidMaterial = new THREE.MeshBasicMaterial({
@@ -152,35 +148,26 @@ export function createGhost(
     fog: false,
   })
   voidMaterials.push(voidMaterial)
+  const faceParts: THREE.BufferGeometry[] = []
   for (const x of [-0.17, 0.17]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.105, 7, 5), voidMaterial)
-    eye.scale.set(0.66, 1.55, 0.3)
-    eye.position.set(x, 1.57, 0.36)
-    group.add(eye)
+    const eye = new THREE.SphereGeometry(0.105, 6, 4)
+    eye.scale(0.66, 1.55, 0.3)
+    eye.translate(x, 1.57, 0.36)
+    faceParts.push(eye)
   }
-  const mouth = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), voidMaterial)
-  mouth.scale.set(0.68, 1.58, 0.25)
-  mouth.position.set(0, 1.24, 0.38)
-  group.add(mouth)
-
-  const aura = new THREE.Mesh(
-    new THREE.SphereGeometry(1.12, 10, 7),
-    new THREE.MeshBasicMaterial({
-      color: 0x4b9ca7,
-      transparent: true,
-      opacity: 0.035,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }),
-  )
-  aura.scale.y = 1.8
-  aura.position.y = 0.15
-  group.add(aura)
+  const mouth = new THREE.SphereGeometry(0.16, 7, 5)
+  mouth.scale(0.68, 1.58, 0.25)
+  mouth.translate(0, 1.24, 0.38)
+  faceParts.push(mouth)
+  const faceGeometry = mergeGeometries(faceParts, false)
+  if (!faceGeometry) throw new Error('Ghost face geometry could not be merged.')
+  for (const geometry of faceParts) geometry.dispose()
+  group.add(new THREE.Mesh(faceGeometry, voidMaterial))
 
   scene.add(group)
   const ghost: Ghost = {
     group,
-    hitMeshes: [torso, head, leftArm, rightArm],
+    hitMeshes: [body, head],
     material,
     voidMaterials,
     health,
