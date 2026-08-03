@@ -1,0 +1,57 @@
+.round-action--pause {
+  right: max(86px, calc(env(safe-area-inset-right) + 78px));
+  top: max(12px, env(safe-area-inset-top));
+  width: 42px;
+  height: 42px;
+  font-size: 13px;
+}
+
+#pause-menu {
+  position: fixed;
+  z-index: 70;
+  inset: 0;
+  display: none;
+  place-items: center;
+  pointer-events: auto;
+  background: rgba(8, 5, 5, .78);
+  backdrop-filter: blur(5px);
+}
+
+#pause-menu.visible { display: grid; }
+
+.pause-card {
+  width: min(430px, 88vw);
+  padding: 24px;
+  border: 1px solid rgba(231, 126, 70, .45);
+  background: linear-gradient(180deg, rgba(39, 19, 14, .98), rgba(11, 8, 8, .98));
+  box-shadow: 0 28px 90px rgba(0, 0, 0, .8);
+}
+
+.pause-card .eyebrow { margin-bottom: 8px; }
+.pause-card h2 { margin-bottom: 20px; font-size: clamp(38px, 8vw, 62px); }
+.pause-card button { margin-top: 10px; }
+
+.pause-setting {
+  width: 100%;
+  padding: 13px 15px;
+  border: 1px solid rgba(217, 118, 67, .4);
+  background: rgba(65, 28, 19, .7);
+  color: #f1ddc6;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.pause-setting:active { filter: brightness(1.25); }
+
+#pause-resume { margin-top: 0; }
+
+#hud.aiming #crosshair { opacity: .28; }
+#hud.aiming.scoped #crosshair { opacity: 0; }
+#hud.aiming .ammo-panel { opacity: .62; }
+
+@media (max-height: 430px) {
+  .round-action--pause { top: 8px; width: 38px; height: 38px; }
+  .pause-card { padding: 18px; }
+  .pause-card h2 { margin-bottom: 12px; }
+  .pause-setting { padding: 10px 12px; }
+}

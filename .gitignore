@@ -1,0 +1,7 @@
+node_modules/
+dist/
+android/
+*.log
+*.apk
+*.sha256
+.DS_Store

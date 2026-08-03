@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#05080d" />
+    <title>Skyfall: Orison-9</title>
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="world" aria-label="Skyfall game world"></canvas>
+
+      <section id="start-screen" class="screen screen--visible">
+        <div class="screen__smoke"></div>
+        <div class="screen__copy">
+          <span class="eyebrow">IMPERIAL EXTRACTION STATION · ORISON-9</span>
+          <h1>SKYFALL<br /><em>ORISON-9</em></h1>
+          <p>
+            The evacuation order is still repeating. The station is losing atmosphere,
+            the Crown relay is silent, and something has come in through the mine.
+          </p>
+          <button id="start-button" class="primary-button">WAKE TO THE ALARM</button>
+          <small>Landscape recommended · headphones strongly recommended · run-based survival</small>
+        </div>
+      </section>
+
+      <section id="game-over-screen" class="screen" aria-hidden="true">
+        <div class="screen__copy screen__copy--compact">
+          <span class="eyebrow">ORISON-9 PERSONNEL SIGNAL LOST</span>
+          <h2>CONSUMED</h2>
+          <p id="final-score">Wave 1 · 0 kills · 0 systems</p>
+          <button id="restart-button" class="primary-button">WAKE AGAIN</button>
+        </div>
+      </section>
+
+      <div id="rotate-message" aria-hidden="true">
+        <strong>TURN YOUR PHONE SIDEWAYS</strong>
+        <span>Skyfall uses ASHFALL's landscape control layout.</span>
+      </div>
+
+      <section id="hud" aria-hidden="true">
+        <header class="hud-top">
+          <div class="brand-block">
+            <span>SKYFALL · ORISON-9</span>
+            <strong id="district-name">HABITATION RING</strong>
+          </div>
+          <div class="wave-block">
+            <span>WAVE</span>
+            <strong id="wave-number">1</strong>
+          </div>
+        </header>
+
+        <div id="wave-banner" role="status">
+          <span id="wave-banner-kicker">EVACUATION ORDER</span>
+          <strong id="wave-banner-copy">PROCEED TO EQUIPMENT BAY</strong>
+        </div>
+
+        <div id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <div id="hit-marker" aria-hidden="true">×</div>
+        <div id="damage-vignette" aria-hidden="true"></div>
+        <div id="toast" role="status"></div>
+
+        <div class="status-panel">
+          <div class="health-row">
+            <span>HEALTH</span>
+            <div class="meter"><i id="health-fill"></i></div>
+            <strong id="health-value">100</strong>
+          </div>
+          <div class="score-row">
+            <span>KILLS <strong id="kill-count">0</strong></span>
+            <span>POINTS <strong id="score-count">0</strong></span>
+          </div>
+        </div>
+
+        <div class="ammo-panel">
+          <span>RUSTLINE CARBINE</span>
+          <div><strong id="ammo-count">30</strong><b>/</b><em id="reserve-count">180</em></div>
+        </div>
+
+        <div id="joystick" class="joystick" aria-label="Movement joystick">
+          <div class="joystick__ring"></div>
+          <div id="joystick-knob" class="joystick__knob"></div>
+        </div>
+
+        <div id="look-pad" aria-label="Drag to look"></div>
+
+        <button id="sprint-button" class="round-action round-action--sprint" aria-label="Sprint">RUN</button>
+        <button id="reload-button" class="round-action round-action--reload" aria-label="Reload">RLD</button>
+        <button id="fire-button" class="fire-button" aria-label="Fire weapon"><span>FIRE</span></button>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
