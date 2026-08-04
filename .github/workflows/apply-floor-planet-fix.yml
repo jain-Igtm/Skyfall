@@ -1,0 +1,220 @@
+name: Apply Skyfall floor and planet fix
+
+on:
+  push:
+    paths:
+      - .github/workflows/apply-floor-planet-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair-scene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Repair station geometry and exterior
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('src/station.ts')
+          text = path.read_text()
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one match, found {count}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              "  const grateTexture = loadSurfaceTexture('./assets/textures/catwalk-grate.webp', 5, 8)\n",
+              "",
+              'remove fake grate texture',
+          )
+
+          replace_once(
+              """  const materials = {
+    floor: new THREE.MeshLambertMaterial({ map: floorTexture, color: 0xbfc3c0 }),
+    floorInset: new THREE.MeshLambertMaterial({ map: floorTexture, color: 0x7f8787 }),
+    wall: new THREE.MeshLambertMaterial({ map: wallTexture, color: 0xc9cecb }),
+    wallDark: new THREE.MeshLambertMaterial({ map: wallTexture, color: 0x8e9795 }),
+    ceiling: new THREE.MeshLambertMaterial({ map: ceilingTexture, color: 0x838b8b }),
+    trim: new THREE.MeshLambertMaterial({ map: rustTexture, color: 0x865d50 }),
+    rust: new THREE.MeshLambertMaterial({ map: rustTexture, color: 0x704a40 }),
+    pipe: new THREE.MeshLambertMaterial({ map: weaponSteelTexture, color: 0xaeb4b2 }),
+    machine: new THREE.MeshLambertMaterial({ map: weaponBlackTexture, color: 0xa9aaa5 }),
+    machineRed: new THREE.MeshLambertMaterial({ map: weaponRedTexture, color: 0xa88d87 }),
+    barrel: new THREE.MeshLambertMaterial({ map: weaponBarrelTexture, color: 0xb9b2aa }),
+    black: new THREE.MeshLambertMaterial({ map: weaponBlackTexture, color: 0x737978 }),
+    grate: new THREE.MeshLambertMaterial({ map: grateTexture, color: 0xb2aaa4 }),
+    rock: new THREE.MeshLambertMaterial({ map: moltenTexture, color: 0x393735 }),
+""",
+              """  const materials = {
+    // Broad surfaces keep lightweight textures; machinery and structural metal retain real specular response.
+    floor: new THREE.MeshStandardMaterial({ map: floorTexture, color: 0xbfc3c0, roughness: 0.78, metalness: 0.28 }),
+    floorInset: new THREE.MeshStandardMaterial({ color: 0x626b6b, roughness: 0.54, metalness: 0.82 }),
+    wall: new THREE.MeshLambertMaterial({ map: wallTexture, color: 0xc9cecb }),
+    wallDark: new THREE.MeshStandardMaterial({ map: wallTexture, color: 0x8e9795, roughness: 0.8, metalness: 0.3 }),
+    ceiling: new THREE.MeshLambertMaterial({ map: ceilingTexture, color: 0x838b8b }),
+    trim: new THREE.MeshStandardMaterial({ map: rustTexture, color: 0x865d50, roughness: 0.72, metalness: 0.62 }),
+    rust: new THREE.MeshLambertMaterial({ map: rustTexture, color: 0x704a40 }),
+    pipe: new THREE.MeshStandardMaterial({ map: weaponSteelTexture, color: 0xaeb4b2, roughness: 0.43, metalness: 0.86 }),
+    machine: new THREE.MeshStandardMaterial({ map: weaponBlackTexture, color: 0xa9aaa5, roughness: 0.58, metalness: 0.72 }),
+    machineRed: new THREE.MeshStandardMaterial({ map: weaponRedTexture, color: 0xa88d87, roughness: 0.66, metalness: 0.58 }),
+    barrel: new THREE.MeshStandardMaterial({ map: weaponBarrelTexture, color: 0xb9b2aa, roughness: 0.38, metalness: 0.9 }),
+    black: new THREE.MeshStandardMaterial({ map: weaponBlackTexture, color: 0x737978, roughness: 0.68, metalness: 0.7 }),
+    grate: new THREE.MeshStandardMaterial({ color: 0x858d8c, roughness: 0.46, metalness: 0.9 }),
+    rock: new THREE.MeshLambertMaterial({ map: moltenTexture, color: 0x393735 }),
+""",
+              'restore mixed materials',
+          )
+
+          replace_once(
+              """  function addFloorPlate(width: number, depth: number, x: number, z: number): void {
+    addBox(width, 0.28, depth, x, -0.14, z, materials.floor)
+    addBox(width * 0.94, 0.025, 0.055, x, 0.02, z - depth * 0.23, materials.floorInset)
+    addBox(width * 0.94, 0.025, 0.055, x, 0.02, z + depth * 0.23, materials.floorInset)
+  }
+""",
+              """  function addFloorPlate(width: number, depth: number, x: number, z: number): void {
+    addBox(width, 0.28, depth, x, -0.14, z, materials.floor)
+
+    // Real panel seams and load ribs break up the texture without adding draw calls after batching.
+    const edge = 0.42
+    addBox(width - edge * 2, 0.04, 0.12, x, 0.018, z - depth / 2 + edge, materials.trim)
+    addBox(width - edge * 2, 0.04, 0.12, x, 0.018, z + depth / 2 - edge, materials.trim)
+    for (let offset = -depth / 2 + 7.5; offset < depth / 2 - 3; offset += 7.5) {
+      addBox(width * 0.965, 0.035, 0.075, x, 0.02, z + offset, materials.floorInset)
+    }
+    for (const lane of [-0.32, 0, 0.32]) {
+      addBox(0.07, 0.035, depth * 0.965, x + width * lane, 0.02, z, materials.floorInset)
+    }
+  }
+""",
+              'add upper floor geometry',
+          )
+
+          replace_once(
+              """  addBox(5.5, 0.28, 5.2, 0, -0.14, 0, materials.grate, false, lift)
+  addBox(5.5, 0.24, 5.2, 0, 3.02, 0, materials.machine, false, lift)
+""",
+              """  addBox(5.5, 0.28, 5.2, 0, -0.14, 0, materials.floor, false, lift)
+  for (const x of [-1.75, 0, 1.75]) addBox(0.07, 0.035, 4.8, x, 0.02, 0, materials.floorInset, false, lift)
+  addBox(5.5, 0.24, 5.2, 0, 3.02, 0, materials.machine, false, lift)
+""",
+              'make lift floor solid',
+          )
+
+          replace_once(
+              """  const catwalkY = mineFloorY - 0.14
+  function addCatwalk(width: number, depth: number, x: number, z: number): void {
+    addBox(width, 0.28, depth, x, catwalkY, z, materials.grate)
+  }
+""",
+              """  const catwalkY = mineFloorY - 0.06
+  function addCatwalk(width: number, depth: number, x: number, z: number): void {
+    const edge = 0.14
+    const top = 0.12
+    const innerWidth = Math.max(0.1, width - edge * 2)
+    const innerDepth = Math.max(0.1, depth - edge * 2)
+
+    // Shaft Four alone uses open metal grating. Every piece is physical geometry, so the excavation is visible below.
+    addBox(width, top, edge, x, catwalkY, z - depth / 2 + edge / 2, materials.grate)
+    addBox(width, top, edge, x, catwalkY, z + depth / 2 - edge / 2, materials.grate)
+    addBox(edge, top, innerDepth, x - width / 2 + edge / 2, catwalkY, z, materials.grate)
+    addBox(edge, top, innerDepth, x + width / 2 - edge / 2, catwalkY, z, materials.grate)
+
+    const longX = width >= depth
+    const primarySpan = longX ? innerDepth : innerWidth
+    const crossSpan = longX ? innerWidth : innerDepth
+    const primaryCount = Math.max(2, Math.floor(primarySpan / 0.46))
+    const crossCount = Math.max(2, Math.floor(crossSpan / 0.92))
+
+    for (let index = 1; index < primaryCount; index += 1) {
+      const offset = -primarySpan / 2 + (primarySpan * index) / primaryCount
+      if (longX) addBox(innerWidth, top * 0.78, 0.075, x, catwalkY, z + offset, materials.grate)
+      else addBox(0.075, top * 0.78, innerDepth, x + offset, catwalkY, z, materials.grate)
+    }
+    for (let index = 1; index < crossCount; index += 1) {
+      const offset = -crossSpan / 2 + (crossSpan * index) / crossCount
+      if (longX) addBox(0.055, top * 0.62, innerDepth, x + offset, catwalkY - 0.014, z, materials.grate)
+      else addBox(innerWidth, top * 0.62, 0.055, x, catwalkY - 0.014, z + offset, materials.grate)
+    }
+  }
+""",
+              'build open lower grating',
+          )
+
+          replace_once(
+              """  // Planet, moon surface, and a faint additive halo beyond the observation glass.
+""",
+              """  // A fully suspended planet and faint additive halo beyond the observation glass.
+""",
+              'update exterior comment',
+          )
+
+          replace_once(
+              """  const planetMaterial = new THREE.MeshBasicMaterial({
+    map: planetTexture,
+    color: 0x9b918a,
+    fog: false,
+  })
+  const planet = new THREE.Mesh(new THREE.SphereGeometry(42, 40, 24), planetMaterial)
+  planet.position.set(30, 24, 174)
+""",
+              """  const planetMaterial = new THREE.MeshStandardMaterial({
+    map: planetTexture,
+    color: 0x9b918a,
+    roughness: 1,
+    metalness: 0,
+    fog: false,
+  })
+  const planet = new THREE.Mesh(new THREE.SphereGeometry(40, 40, 24), planetMaterial)
+  planet.position.set(24, 15, 190)
+""",
+              'move planet into open space',
+          )
+
+          replace_once(
+              """  const moon = new THREE.Mesh(
+    new THREE.PlaneGeometry(300, 240),
+    new THREE.MeshBasicMaterial({ map: planetTexture, color: 0x454542, fog: false }),
+  )
+  moon.rotation.x = -Math.PI / 2
+  moon.position.set(0, -4.8, 130)
+  exterior.add(moon)
+  scene.add(exterior)
+""",
+              """  const planetKey = new THREE.DirectionalLight(0xc9d3d5, 1.35)
+  planetKey.position.set(-60, 85, 95)
+  planetKey.target.position.copy(planet.position)
+  exterior.add(planetKey, planetKey.target)
+  scene.add(exterior)
+""",
+              'remove exterior ground plane',
+          )
+
+          path.write_text(text)
+          PY
+
+      - name: Validate production build
+        shell: bash
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit repaired scene
+        shell: bash
+        run: |
+          rm .github/workflows/apply-floor-planet-fix.yml
+          git config user.name "Skyfall Build Repair"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/station.ts .github/workflows/apply-floor-planet-fix.yml
+          git commit -m "Fix Skyfall grating and planet placement"
+          git push origin HEAD:main
